@@ -66,4 +66,4 @@ echo "=== 5. 確認 ==="
 .venv/bin/python -c 'import torch; print("torch", torch.__version__, "/ GPU使用可:", torch.cuda.is_available())'
 echo
 echo "完了しました。Podを作り直すと自動で起動します。今すぐ起動するには:"
-echo "  cd $COMFY_DIR && nohup .venv/bin/python main.py --listen 0.0.0.0 --port 8188 >> /workspace/logs/comfyui.log 2>&1 &"
+echo "  cd $COMFY_DIR && nohup .venv/bin/python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header >> /workspace/logs/comfyui.log 2>&1 &"
