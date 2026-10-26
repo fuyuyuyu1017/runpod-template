@@ -63,7 +63,8 @@ fi
 if [[ -x "$COMFY_DIR/.venv/bin/python" ]]; then
   (
     cd "$COMFY_DIR" || exit 1
-    nohup env -u LD_LIBRARY_PATH .venv/bin/python main.py --listen 0.0.0.0 --port 8188 \
+    # --enable-cors-header: RunPodの中継経由のアクセスを、ComfyUIの送信元チェックで403にしないため
+    nohup env -u LD_LIBRARY_PATH .venv/bin/python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header \
       >> "$LOG_DIR/comfyui.log" 2>&1 &
   )
   echo "[start] ComfyUI: 起動（ログ: $LOG_DIR/comfyui.log）"
