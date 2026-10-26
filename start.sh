@@ -37,14 +37,27 @@ FB_DIR=/workspace/.filebrowser
 FB_DB="$FB_DIR/filebrowser.db"
 mkdir -p "$FB_DIR"
 if [[ ! -f "$FB_DB" ]]; then
-  FB_PASS="${FILEBROWSER_PASSWORD:-$(random_password)}"
+  FB_PASS="${FILEBROWSER_PASSWORD:-}"
+  if [[ -z "$FB_PASS" ]]; then
+    FB_PASS="$(random_password)"
+    echo "[start] FILEBROWSER_PASSWORD が未設定のため、パスワードを作りました: $FB_PASS"
+  elif (( ${#FB_PASS} < 12 )); then
+    echo "[start] 注意: FILEBROWSER_PASSWORD は12文字以上にしてください（短いと作成に失敗します）"
+  fi
   filebrowser -d "$FB_DB" config init >/dev/null
-  filebrowser -d "$FB_DB" users add admin "$FB_PASS" --perm.admin >/dev/null
-  echo "[start] ファイルブラウザ: 初回設定（ユーザー admin / パスワード: $FB_PASS）"
+  # 失敗したらDBを消して、次回の起動でやり直せるようにする
+  if filebrowser -d "$FB_DB" users add admin "$FB_PASS" --perm.admin >/dev/null; then
+    echo "[start] ファイルブラウザ: 初回設定（ユーザー admin を作成）"
+  else
+    rm -f "$FB_DB"
+    echo "[start] ファイルブラウザ: admin の作成に失敗しました。上のエラーを確認してください"
+  fi
 fi
-nohup filebrowser -d "$FB_DB" -r /workspace -a 0.0.0.0 -p 8080 \
-  >> "$LOG_DIR/filebrowser.log" 2>&1 &
-echo "[start] ファイルブラウザ: 起動（ログ: $LOG_DIR/filebrowser.log）"
+if [[ -f "$FB_DB" ]]; then
+  nohup filebrowser -d "$FB_DB" -r /workspace -a 0.0.0.0 -p 8080 \
+    >> "$LOG_DIR/filebrowser.log" 2>&1 &
+  echo "[start] ファイルブラウザ: 起動（ログ: $LOG_DIR/filebrowser.log）"
+fi
 
 # --- ComfyUI（8188番）。Volume上にインストール済みのときだけ ---
 if [[ -x "$COMFY_DIR/.venv/bin/python" ]]; then
