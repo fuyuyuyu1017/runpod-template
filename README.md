@@ -32,7 +32,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 | Volume Mount Path | `/workspace` |
 | HTTP Ports | `8188, 8888, 8080` |
 | TCP Ports | `22` |
-| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（任意） |
+| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（任意。ファイルブラウザは12文字以上が必須） |
 
 ## ComfyUIのインストール（初回だけ）
 
