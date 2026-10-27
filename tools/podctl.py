@@ -4,6 +4,7 @@
 使い方:
   python3 tools/podctl.py status                     アカウントの全Podを表示
   python3 tools/podctl.py start [--gpu 名前 ...]     Podを作り、JupyterLabが応答するまで待つ
+  python3 tools/podctl.py start --cpu                GPUなしの安いPodを作る（ファイルの確認・取り出し用）
   python3 tools/podctl.py exec 'コマンド' [--timeout 秒]
                                                      Pod内のbashでコマンドを実行し、出力と終了コードを返す
   python3 tools/podctl.py upload ローカル リモート   ファイルを送る（リモートは /workspace からの相対パス）
@@ -42,6 +43,7 @@ VOLUME_ID = os.environ.get("RUNPOD_VOLUME_ID", "cnkmw89wfz")
 POD_NAME = os.environ.get("RUNPOD_POD_NAME", "ComfyUI-session-auto")
 # 先頭から順に空きのあるものが使われる
 GPU_TYPES = os.environ.get("RUNPOD_GPU_TYPES", "NVIDIA GeForce RTX 4090").split(",")
+CPU_VCPUS = 2
 JUPYTER_PORT = 8888
 
 
@@ -100,6 +102,8 @@ def cmd_status(_args):
         return
     for p in pods:
         gpu = (p.get("machine") or {}).get("gpuTypeId") or (p.get("gpu") or {}).get("id", "")
+        if not p.get("gpuCount"):
+            gpu = f"CPU {p.get('vcpuCount')} vCPU"
         mark = " ← このツールの管理対象" if p.get("name") == POD_NAME else ""
         print(f"{p['id']}  {p.get('name')}  {p.get('desiredStatus')}  ${p.get('costPerHr')}/時  {gpu}{mark}")
 
@@ -114,9 +118,12 @@ def cmd_start(args):
             "name": POD_NAME,
             "templateId": TEMPLATE_ID,
             "networkVolumeId": VOLUME_ID,
-            "gpuTypeIds": args.gpu or GPU_TYPES,
-            "gpuCount": 1,
         }
+        if args.cpu:
+            # 2 vCPU・メモリ4GB。ファイルの確認や取り出し、軽いコマンド向け
+            body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS})
+        else:
+            body.update({"gpuTypeIds": args.gpu or GPU_TYPES, "gpuCount": 1})
         p = runpod("POST", "/pods", body)
         if not p or "id" not in p:
             die("応答にPod IDがありません。status で確認してください")
@@ -152,7 +159,12 @@ def _ensure_dir(pod, remote):
         path = f"{path}/{part}" if path else part
         if jupyter(pod, "GET", _contents_path(path) + "?content=0").ok:
             continue
-        r = jupyter(pod, "PUT", _contents_path(path), json={"type": "directory"})
+        # 起動直後は404を返すことがあるので、少し待って試し直す
+        for _ in range(3):
+            r = jupyter(pod, "PUT", _contents_path(path), json={"type": "directory"})
+            if r.ok:
+                break
+            time.sleep(5)
         if not r.ok:
             die(f"フォルダを作れません: /workspace/{path}: {r.status_code} {r.text[:300]}")
 
@@ -250,7 +262,9 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     s = sub.add_parser("start")
-    s.add_argument("--gpu", nargs="+", help="GPUの種類（先頭から順に試す）")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--gpu", nargs="+", help="GPUの種類（先頭から順に試す）")
+    g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（ファイルの確認・取り出し用）")
     s.add_argument("--wait", type=int, default=10, help="JupyterLabの応答を待つ分数")
     e = sub.add_parser("exec")
     e.add_argument("command")
