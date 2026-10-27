@@ -58,12 +58,14 @@ python3 tools/podctl.py download voice-lab/generated/out.wav ./out.wav
 python3 tools/podctl.py stop --yes     # Podを削除（/workspace は残る）
 ```
 
-クラウド環境の設定：
+クラウド環境の設定（Network secrets。キーはセッションから見えず、通信時に付けられる）：
 
-| 項目 | 値 |
-| --- | --- |
-| Allowed domains | `rest.runpod.io`、`*.proxy.runpod.net` |
-| Secrets / 環境変数 | `RUNPOD_API_KEY`（この用途専用のキー）、`JUPYTER_PASSWORD`（RunPodのテンプレートと同じ値） |
+| 名前 | Allowed websites | ヘッダー |
+| --- | --- | --- |
+| RunPod API | `rest.runpod.io` | `Authorization`、Prefix `Bearer`、Value はRunPodのAPIキー（この用途専用） |
+| RunPod Jupyter | `*.proxy.runpod.net` | `Authorization`、Prefix `token`、Value はJupyterLabのパスワード |
+
+JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JUPYTER_PASSWORD` と同じ値にします。Network secretsを使えない場合は、環境変数 `RUNPOD_API_KEY`・`JUPYTER_PASSWORD` でも動きます。
 
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
 - `exec` は既定で600秒で打ち切ります。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。

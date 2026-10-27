@@ -10,9 +10,12 @@
   python3 tools/podctl.py download リモート ローカル ファイルを受け取る
   python3 tools/podctl.py stop --yes                 このツールが管理するPodを削除（/workspace は残る）
 
-必要な環境変数:
-  RUNPOD_API_KEY    RunPodのAPIキー（Network secrets の場合は通信時に差し込まれる）
-  JUPYTER_PASSWORD  JupyterLabのパスワード。RunPodのテンプレートにも同じ値を設定しておく
+認証（どちらか）:
+  - クラウド環境の Network secrets（おすすめ。キーはセッションから見えない）
+      rest.runpod.io       → Authorization: Bearer <RunPodのAPIキー>
+      *.proxy.runpod.net   → Authorization: token <JupyterLabのパスワード>
+  - 環境変数 RUNPOD_API_KEY / JUPYTER_PASSWORD
+  JupyterLabのパスワードは、RunPodのテンプレートの JUPYTER_PASSWORD と同じ値にする
 任意:
   RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_GPU_TYPES（カンマ区切り）
 
@@ -47,23 +50,16 @@ def die(msg):
     sys.exit(1)
 
 
-def api_key():
-    key = os.environ.get("RUNPOD_API_KEY")
-    if not key:
-        die("RUNPOD_API_KEY が設定されていません")
-    return key
-
-
-def jupyter_token():
-    token = os.environ.get("JUPYTER_PASSWORD")
-    if not token:
-        die("JUPYTER_PASSWORD が設定されていません")
-    return token
+def auth_header(env, prefix):
+    """環境変数があればヘッダーを作る。無ければ空にし、クラウド環境の
+    Network secrets（通信時にプロキシがヘッダーを付ける）に任せる。"""
+    value = os.environ.get(env)
+    return {"Authorization": f"{prefix} {value}"} if value else {}
 
 
 def runpod(method, path, body=None, allow_404=False):
     r = requests.request(method, API_BASE + path, json=body, timeout=60,
-                         headers={"Authorization": f"Bearer {api_key()}"})
+                         headers=auth_header("RUNPOD_API_KEY", "Bearer"))
     if allow_404 and r.status_code == 404:
         return None
     if not r.ok:
@@ -90,7 +86,7 @@ def jupyter_base(pod):
 
 
 def jupyter(pod, method, path, **kw):
-    headers = {"Authorization": f"token {jupyter_token()}"}
+    headers = auth_header("JUPYTER_PASSWORD", "token")
     return requests.request(method, jupyter_base(pod) + path, headers=headers,
                             timeout=kw.pop("timeout", 60), **kw)
 
@@ -134,7 +130,7 @@ def cmd_start(args):
                 print(f"準備完了: {jupyter_base(p)}")
                 return
             if r.status_code == 403:
-                die("JupyterLabにログインできません。テンプレートの JUPYTER_PASSWORD と同じ値か確認してください")
+                die("JupyterLabにログインできません。テンプレートの JUPYTER_PASSWORD と、こちらの設定が同じ値か確認してください")
         except requests.RequestException:
             pass
         time.sleep(10)
@@ -145,7 +141,7 @@ def _ws_connect(pod, term_name):
     import websocket  # websocket-client（無ければ pip install websocket-client）
 
     url = re.sub(r"^http", "ws", jupyter_base(pod)) + f"/terminals/websocket/{term_name}"
-    opts = {"header": [f"Authorization: token {jupyter_token()}"],
+    opts = {"header": [f"{k}: {v}" for k, v in auth_header("JUPYTER_PASSWORD", "token").items()],
             "sslopt": {"cert_reqs": ssl.CERT_REQUIRED,
                        "ca_certs": os.environ.get("SSL_CERT_FILE") or None},
             "timeout": 30}
