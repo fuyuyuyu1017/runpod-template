@@ -17,6 +17,16 @@ if [[ -n "${PUBLIC_KEY:-}" ]]; then
   /usr/sbin/sshd && echo "[start] SSH: 起動"
 fi
 
+# --- 外部サービスの設定（値は表示せず、設定の有無だけログに出す） ---
+for v in HF_TOKEN CIVITAI_TOKEN; do
+  [[ -n "${!v:-}" ]] && echo "[start] $v: 設定あり" || echo "[start] $v: 未設定"
+done
+if [[ -n "${RCLONE_CONFIG_OFFSITE_TYPE:-}" ]]; then
+  echo "[start] 外部バックアップ（rclone の offsite:）: 設定あり（${RCLONE_CONFIG_OFFSITE_TYPE}）"
+else
+  echo "[start] 外部バックアップ（rclone の offsite:）: 未設定"
+fi
+
 # --- JupyterLab（8888番） ---
 JUPYTER_TOKEN="${JUPYTER_PASSWORD:-}"
 if [[ -z "$JUPYTER_TOKEN" ]]; then
