@@ -44,6 +44,14 @@ bash /opt/runpod-template/scripts/install-comfyui.sh
 - 既存の `/workspace/runpod-slim/ComfyUI/models` を `extra_model_paths.yaml` で参照する（モデルはコピーしない）
 - 再実行すると最新のリリースへ更新する
 
+## 容量の内訳を見る
+
+```bash
+bash /opt/runpod-template/scripts/disk-audit.sh
+```
+
+Network Volume の主なフォルダを大きい順に表示します（読むだけで、何も消しません）。`df -h /workspace` はRunPod全体の数字を表示するため、本当の使用量はこちらで見ます。
+
 ## クラウドのClaudeから操作する（tools/podctl.py）
 
 Claude Code on the web などのクラウド環境から、Podの作成・コマンド実行・ファイル転送・削除をするツールです。クラウド環境からはSSHもWebSocket（JupyterLabのターミナル）も使えないため、通信はすべてJupyterLab（8888番）へのHTTPSで行います。`exec` はコマンドを `/workspace/logs/podctl/<id>/cmd.sh` に置き、Pod内のランナー（`scripts/podctl-runner.sh`、`start.sh` が起動）が実行して、出力を同じフォルダに書きます。ジョブのフォルダは終了の1日後にランナーが消します。
