@@ -46,14 +46,13 @@ bash /opt/runpod-template/scripts/install-comfyui.sh
 
 ## クラウドのClaudeから操作する（tools/podctl.py）
 
-Claude Code on the web などのクラウド環境から、Podの作成・コマンド実行・ファイル転送・削除をするツールです。クラウド環境からはSSHが使えないため、コマンドはJupyterLab（8888番）のターミナルをHTTPSで使って実行します。
+Claude Code on the web などのクラウド環境から、Podの作成・コマンド実行・ファイル転送・削除をするツールです。クラウド環境からはSSHもWebSocket（JupyterLabのターミナル）も使えないため、通信はすべてJupyterLab（8888番）へのHTTPSで行います。`exec` はコマンドを `/workspace/logs/podctl/<id>/cmd.sh` に置き、Pod内のランナー（`scripts/podctl-runner.sh`、`start.sh` が起動）が実行して、出力を同じフォルダに書きます。ジョブのフォルダは終了の1日後にランナーが消します。
 
 ```bash
-pip install websocket-client          # 初回だけ
 python3 tools/podctl.py status
 python3 tools/podctl.py start          # 既にあれば作らない。JupyterLabが応答するまで待つ
 python3 tools/podctl.py exec 'nvidia-smi'
-python3 tools/podctl.py upload ./train.sh voice-lab/setup/train.sh
+python3 tools/podctl.py upload ./train.sh voice-lab/setup/train.sh   # 送り先のフォルダは自動で作る
 python3 tools/podctl.py download voice-lab/generated/out.wav ./out.wav
 python3 tools/podctl.py stop --yes     # Podを削除（/workspace は残る）
 ```
@@ -68,5 +67,5 @@ python3 tools/podctl.py stop --yes     # Podを削除（/workspace は残る）
 JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JUPYTER_PASSWORD` と同じ値にします。Network secretsを使えない場合は、環境変数 `RUNPOD_API_KEY`・`JUPYTER_PASSWORD` でも動きます。
 
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
-- `exec` は既定で600秒で打ち切ります。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
+- `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
 - GPUは `--gpu "NVIDIA RTX A5000" "NVIDIA GeForce RTX 3090"` のように複数指定でき、空きのあるものが使われます。

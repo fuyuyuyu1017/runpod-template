@@ -19,15 +19,15 @@
 任意:
   RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_GPU_TYPES（カンマ区切り）
 
-コマンドの実行には JupyterLab のターミナル（8888番、HTTPS）を使う。
-クラウド環境からは SSH が使えないため。
+通信はすべて JupyterLab（8888番）へのHTTPS。クラウド環境からは SSH も WebSocket も使えないため、
+exec はコマンドを /workspace/logs/podctl/<id>/cmd.sh に置き、Pod内の scripts/podctl-runner.sh が
+実行して出力を同じフォルダに書く。それを読み取って表示する。
 """
 import argparse
 import base64
 import json
 import os
 import re
-import ssl
 import sys
 import time
 import urllib.parse
@@ -137,82 +137,7 @@ def cmd_start(args):
     die(f"{args.wait}分待っても応答がありません。Podは動いている可能性があるので、status を確認し、不要なら stop してください")
 
 
-def _ws_connect(pod, term_name):
-    import websocket  # websocket-client（無ければ pip install websocket-client）
-
-    url = re.sub(r"^http", "ws", jupyter_base(pod)) + f"/terminals/websocket/{term_name}"
-    opts = {"header": [f"{k}: {v}" for k, v in auth_header("JUPYTER_PASSWORD", "token").items()],
-            "sslopt": {"cert_reqs": ssl.CERT_REQUIRED,
-                       "ca_certs": os.environ.get("SSL_CERT_FILE") or None},
-            "timeout": 30}
-    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
-    if proxy:
-        u = urllib.parse.urlparse(proxy)
-        opts.update(http_proxy_host=u.hostname, http_proxy_port=u.port, proxy_type="http")
-    return websocket.create_connection(url, **opts)
-
-
-ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\r")
-
-
-def cmd_exec(args):
-    import websocket
-
-    pod = running_pod()
-    r = jupyter(pod, "POST", "/api/terminals")
-    if not r.ok:
-        die(f"ターミナルを開けません: {r.status_code} {r.text[:300]}")
-    name = r.json()["name"]
-    tag = uuid.uuid4().hex[:8]
-    # 出力の始まりと終わりの目印。入力の表示（エコー）やプロンプトと区別できるよう、実行時に組み立てる
-    start = f"__PODCTL_{tag}_START__"
-    done = re.compile(rf"__PODCTL_{tag}_END_(\d+)__\n?")
-    # ( ) で囲み、exit や cd が後ろの目印の出力に影響しないようにする。
-    # 終わりの目印は ) と同じ行に置き、bashが実行前にまとめて読むようにする（実行中の入力のエコーを防ぐ）
-    script = (f"printf '__PODCTL_%s_START__\\n' {tag}; (cd /workspace\n{args.command}\n); "
-              f"printf '__PODCTL_%s_END_%s__\\n' {tag} $?\n")
-    ws = _ws_connect(pod, name)
-    ws.settimeout(5)
-    code = None
-    try:
-        ws.send(json.dumps(["stdin", script]))
-        buf = ""
-        started = False
-        deadline = time.time() + args.timeout
-        while time.time() < deadline:
-            try:
-                msg = json.loads(ws.recv())
-            except websocket.WebSocketTimeoutException:
-                continue
-            if msg[0] != "stdout":
-                continue
-            buf += ANSI.sub("", msg[1])
-            if not started:
-                i = buf.find(start + "\n")
-                if i < 0:
-                    continue
-                buf = buf[i + len(start) + 1:]
-                started = True
-            m = done.search(buf)
-            if m:
-                sys.stdout.write(buf[:m.start()])
-                code = int(m.group(1))
-                break
-            # 目印が途中で切れている可能性があるので、末尾は残して出力する
-            keep = 64
-            if len(buf) > keep:
-                sys.stdout.write(buf[:-keep])
-                buf = buf[-keep:]
-            sys.stdout.flush()
-        else:
-            if started:
-                sys.stdout.write(buf)
-            print(f"\n[podctl] {args.timeout}秒で打ち切りました。コマンドはPod内で動き続けている可能性があります"
-                  "（長い処理は nohup で起動し、ログを見る）", file=sys.stderr)
-    finally:
-        ws.close()
-        jupyter(pod, "DELETE", f"/api/terminals/{name}")
-    sys.exit(124 if code is None else code)
+JOBS_DIR = "logs/podctl"  # /workspace からの相対パス。Pod側は scripts/podctl-runner.sh が見る
 
 
 def _contents_path(remote):
@@ -220,14 +145,77 @@ def _contents_path(remote):
     return "/api/contents/" + urllib.parse.quote(remote)
 
 
+def _ensure_dir(pod, remote):
+    """/workspace からの相対パスのフォルダを、上から順に作る（あれば何もしない）"""
+    path = ""
+    for part in remote.strip("/").split("/"):
+        path = f"{path}/{part}" if path else part
+        if jupyter(pod, "GET", _contents_path(path) + "?content=0").ok:
+            continue
+        r = jupyter(pod, "PUT", _contents_path(path), json={"type": "directory"})
+        if not r.ok:
+            die(f"フォルダを作れません: /workspace/{path}: {r.status_code} {r.text[:300]}")
+
+
+def _job_files(pod, job):
+    r = jupyter(pod, "GET", _contents_path(f"{JOBS_DIR}/{job}"), timeout=30)
+    return {c["name"] for c in r.json().get("content", [])} if r.ok else set()
+
+
+def _read_file(pod, remote):
+    # 中継でキャッシュされないよう、毎回違うクエリを付ける
+    r = jupyter(pod, "GET", "/files/" + urllib.parse.quote(remote) + f"?t={time.time()}", timeout=60)
+    return r.content if r.ok else None
+
+
+def cmd_exec(args):
+    # クラウド環境の通信はWebSocket（JupyterLabのターミナル）を通さないので、
+    # コマンドをファイルで置き、Pod内のランナーに実行させて結果のファイルを読む
+    pod = running_pod()
+    job = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    jobdir = f"{JOBS_DIR}/{job}"
+    _ensure_dir(pod, jobdir)
+    r = jupyter(pod, "PUT", _contents_path(f"{jobdir}/cmd.sh"),
+                json={"type": "file", "format": "text", "content": args.command + "\n"})
+    if not r.ok:
+        die(f"コマンドを送れません: {r.status_code} {r.text[:300]}")
+
+    shown = 0
+    started_by = time.time() + 30
+    deadline = time.time() + args.timeout
+    while time.time() < deadline:
+        time.sleep(1)
+        files = _job_files(pod, job)
+        if "started" not in files:
+            if time.time() > started_by:
+                die("Pod内のランナーが動いていません。テンプレートのイメージが古い可能性があります"
+                    "（scripts/podctl-runner.sh を起動するイメージで作り直す）")
+            continue
+        done = "exit" in files
+        out = _read_file(pod, f"{jobdir}/out.log") if "out.log" in files else None
+        if out and len(out) > shown:
+            sys.stdout.write(out[shown:].decode("utf-8", "replace"))
+            sys.stdout.flush()
+            shown = len(out)
+        if done:
+            code = (_read_file(pod, f"{jobdir}/exit") or b"").strip()
+            sys.exit(int(code) if code.isdigit() else 1)
+    print(f"\n[podctl] {args.timeout}秒で打ち切りました。コマンドはPod内で動き続けています"
+          f"（出力: /workspace/{jobdir}/out.log。長い処理は nohup で起動し、ログを見る）", file=sys.stderr)
+    sys.exit(124)
+
+
 def cmd_upload(args):
     pod = running_pod()
     with open(args.local, "rb") as f:
         data = base64.b64encode(f.read()).decode()
     body = {"type": "file", "format": "base64", "content": data}
+    parent = os.path.dirname(args.remote.removeprefix("/workspace/").lstrip("/"))
+    if parent:
+        _ensure_dir(pod, parent)
     r = jupyter(pod, "PUT", _contents_path(args.remote), json=body, timeout=300)
     if not r.ok:
-        die(f"送信に失敗しました: {r.status_code} {r.text[:300]}（送り先のフォルダが無い場合は exec 'mkdir -p ...' で作る）")
+        die(f"送信に失敗しました: {r.status_code} {r.text[:300]}")
     print(f"送信しました: /workspace/{r.json()['path']}")
 
 

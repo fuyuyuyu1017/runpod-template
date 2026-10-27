@@ -72,6 +72,10 @@ else
   echo "[start] ComfyUI: 未インストール。bash /opt/runpod-template/scripts/install-comfyui.sh で入れられます"
 fi
 
+# --- tools/podctl.py の exec 用ランナー ---
+nohup bash /opt/runpod-template/scripts/podctl-runner.sh >> "$LOG_DIR/podctl-runner.log" 2>&1 &
+echo "[start] podctlランナー: 起動"
+
 # --- 追加の起動処理（/workspace/startup.d/*.sh があれば順に実行） ---
 if [[ -d /workspace/startup.d ]]; then
   for f in /workspace/startup.d/*.sh; do
