@@ -2,6 +2,7 @@
 
 - ユーザーへの説明は日本語で行う。
 - RunPodの操作は `tools/podctl.py` を使う（使い方はREADME）。認証はクラウド環境の Network secrets（または環境変数 `RUNPOD_API_KEY`・`JUPYTER_PASSWORD`）。
+- GPUは RTX 4090 だけを使う。空いていなければ別のGPUにせず、空くまで待つ（`start` が自動で待つ）。別のGPUを使うのはユーザーが認めたときだけ。
 - GPUを使わない作業（ファイルの確認・取り出し）は `start --cpu` の安いPodで行う。そのPodのメインページ（`scripts/hub/`）は、Claudeを通さずに結果を聞いたり作業を実行したりするためのもの。メインページで扱う中身（音声・評価・作業の出力）は読まない。
 - Podは動いている間ずっと課金される。作業が終わったら `stop --yes` で削除し、`status` で残っていないことを確認する。学習中などで残すときは、ユーザーにそう伝える。
 - `/workspace` 内の削除は、対象とサイズを示してユーザーの了承を得てから行う。ComfyUI関連（`/workspace/apps/ComfyUI`、`/workspace/runpod-slim`）とその仮想環境には触れない。
