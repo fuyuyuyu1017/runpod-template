@@ -5,7 +5,8 @@
 - GPUは RTX 4090 だけを使う。空いていなければ別のGPUにせず、空くまで待つ（`start` が自動で待つ）。別のGPUを使うのはユーザーが認めたときだけ。
 - GPUを使わない作業（ファイルの確認・取り出し）は `start --cpu` の安いPodで行う。そのPodのメインページ（`scripts/hub/`）は、Claudeを通さずに結果を聞いたり作業を実行したりするためのもの。メインページで扱う中身（音声・評価・作業の出力）は読まない。
 - Podは動いている間ずっと課金される。作業が終わったら `stop --yes` で削除し、`status` で残っていないことを確認する。学習中などで残すときは、ユーザーにそう伝える。
-- `/workspace` 内の削除は、対象とサイズを示してユーザーの了承を得てから行う。ComfyUI関連（`/workspace/apps/ComfyUI`、`/workspace/runpod-slim`）とその仮想環境には触れない。
+- `/workspace` 内の削除は、対象とサイズを示してユーザーの了承を得てから行う。
+- ComfyUI関連（`/workspace/apps/ComfyUI`、`/workspace/runpod-slim`）：本体の更新はしない（`install-comfyui.sh` を再実行しない）。カスタムノードの追加・更新は毎回事前にユーザーの了承を取り、入れる前に `custom_nodes` とPython環境（`.venv`）の控えを取る。手順はライブラリの `docs/03_RunPod環境.md` 第3部。
 - Network Volumeは確保したサイズで課金され、縮小できない。容量を広げる前にユーザーに相談する。
 - ファイルの置き場所はプロジェクトライブラリの `docs/02_ファイル配置.md` に従う。要点：文書と実験スクリプトの正本はライブラリ（`docs/`、`<分野>-lab/<テーマ>/`）。Podの `/workspace/<分野>-lab/setup/` はそこから `upload` したコピーで、Pod上では直さない。
 - このリポジトリには **Podテンプレートそのもの**（イメージの定義、`start.sh`、イメージに入る `scripts/`、Podを操作する `tools/podctl.py`、CI、説明）だけを置く。`main` に入るたびにイメージが作り直される。

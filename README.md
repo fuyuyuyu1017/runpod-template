@@ -79,7 +79,7 @@ bash /opt/runpod-template/scripts/install-comfyui.sh
 
 - `/workspace/apps/ComfyUI` に最新のリリース版を入れる（`COMFY_REF=v0.x.y` で版を指定できる）
 - 既存の `/workspace/runpod-slim/ComfyUI/models` を `extra_model_paths.yaml` で参照する（モデルはコピーしない）
-- 再実行すると最新のリリースへ更新する
+- 入っていれば何もせずに終わる。本体は更新しない決まりなので、更新するのはユーザーが決めたときだけ（`COMFY_UPDATE=1` を付けて再実行。先に `custom_nodes` と `.venv` の控えを取る）
 
 ## クラウドのClaudeから操作する（tools/podctl.py）
 
