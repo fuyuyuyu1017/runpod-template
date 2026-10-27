@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 新しいComfyUIをNetwork Volume上にインストールする（初回だけ実行）。
 # 既存の /workspace/runpod-slim/ComfyUI には触れず、モデルフォルダだけを参照する。
-# 再実行すると、最新のリリースへ更新する。
+# 入っていれば何もしない。本体の更新はユーザーが決めたときだけ COMFY_UPDATE=1 で行う（先に控えを取る）。
 set -Eeuo pipefail
 
 COMFY_DIR="${COMFY_DIR:-/workspace/apps/ComfyUI}"
@@ -12,6 +12,12 @@ TORCH_INDEX="https://download.pytorch.org/whl/cu128"
 
 trap 'echo "NG: ${LINENO}行目で止まりました"' ERR
 unset VIRTUAL_ENV PYTHONPATH LD_LIBRARY_PATH
+
+if [[ -d "$COMFY_DIR/.git" && "${COMFY_UPDATE:-0}" != 1 ]]; then
+  echo "ComfyUIはすでに入っています（$COMFY_DIR）。本体は更新しない決まりなので終了します。"
+  echo "更新するときは、控えを取ってから COMFY_UPDATE=1 を付けて再実行してください。"
+  exit 0
+fi
 
 echo "=== 1. ComfyUIの取得 ==="
 mkdir -p "$(dirname "$COMFY_DIR")"
