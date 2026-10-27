@@ -74,6 +74,10 @@ else
   echo "[start] ComfyUI: 未インストール。bash /opt/runpod-template/scripts/install-comfyui.sh で入れられます"
 fi
 
+# --- メインページ（8000番。CPUのPodで開く。結果の試聴・評価、ログ、決めた作業の実行） ---
+nohup /usr/bin/python3.12 /opt/runpod-template/scripts/hub/hub.py >> "$LOG_DIR/hub.log" 2>&1 &
+echo "[start] メインページ: 起動（ログ: $LOG_DIR/hub.log）"
+
 # --- tools/podctl.py の exec 用ランナー ---
 nohup bash /opt/runpod-template/scripts/podctl-runner.sh >> "$LOG_DIR/podctl-runner.log" 2>&1 &
 echo "[start] podctlランナー: 起動"

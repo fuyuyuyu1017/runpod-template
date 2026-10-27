@@ -4,7 +4,8 @@
 使い方:
   python3 tools/podctl.py status                     アカウントの全Podを表示
   python3 tools/podctl.py start [--gpu 名前 ...]     Podを作り、JupyterLabが応答するまで待つ
-  python3 tools/podctl.py start --cpu                GPUなしの安いPodを作る（ファイルの確認・取り出し用）
+  python3 tools/podctl.py start --cpu                GPUなしの安いPodを作る（メインページ・ファイルの確認用）
+                                                     exec / upload / download / stop も --cpu でこのPodを扱う
   python3 tools/podctl.py exec 'コマンド' [--timeout 秒]
                                                      Pod内のbashでコマンドを実行し、出力と終了コードを返す
   python3 tools/podctl.py upload ローカル リモート   ファイルを送る（リモートは /workspace からの相対パス）
@@ -18,7 +19,7 @@
   - 環境変数 RUNPOD_API_KEY / JUPYTER_PASSWORD
   JupyterLabのパスワードは、RunPodのテンプレートの JUPYTER_PASSWORD と同じ値にする
 任意:
-  RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_GPU_TYPES（カンマ区切り）
+  RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_CPU_POD_NAME / RUNPOD_GPU_TYPES（カンマ区切り）
 
 通信はすべて JupyterLab（8888番）へのHTTPS。クラウド環境からは SSH も WebSocket も使えないため、
 exec はコマンドを /workspace/logs/podctl/<id>/cmd.sh に置き、Pod内の scripts/podctl-runner.sh が
@@ -41,9 +42,13 @@ TEMPLATE_ID = os.environ.get("RUNPOD_TEMPLATE_ID", "bxcjnehhh6")
 VOLUME_ID = os.environ.get("RUNPOD_VOLUME_ID", "cnkmw89wfz")
 # runpod.ps1 と同じ名前にして、どちらからでも同じPodを扱えるようにする
 POD_NAME = os.environ.get("RUNPOD_POD_NAME", "ComfyUI-session-auto")
+# CPUのPodは別の名前にして、GPUのPodと同時に動かせるようにする
+CPU_POD_NAME = os.environ.get("RUNPOD_CPU_POD_NAME", "Hub-cpu-auto")
 # 先頭から順に空きのあるものが使われる
 GPU_TYPES = os.environ.get("RUNPOD_GPU_TYPES", "NVIDIA GeForce RTX 4090").split(",")
 CPU_VCPUS = 2
+# CPUのPodで開くポート（メインページ、ファイルブラウザ、JupyterLab）。ComfyUIは動かさない
+CPU_PORTS = ["8000/http", "8080/http", "8888/http"]
 JUPYTER_PORT = 8888
 
 
@@ -72,14 +77,18 @@ def runpod(method, path, body=None, allow_404=False):
     return r.json() if r.text else None
 
 
-def managed_pods():
-    return [p for p in (runpod("GET", "/pods") or []) if p.get("name") == POD_NAME]
+def pod_name(args):
+    return CPU_POD_NAME if args.cpu else POD_NAME
 
 
-def running_pod():
-    pods = [p for p in managed_pods() if p.get("desiredStatus") == "RUNNING"]
+def managed_pods(name):
+    return [p for p in (runpod("GET", "/pods") or []) if p.get("name") == name]
+
+
+def running_pod(args):
+    pods = [p for p in managed_pods(pod_name(args)) if p.get("desiredStatus") == "RUNNING"]
     if not pods:
-        die(f"実行中のPod '{POD_NAME}' がありません。start で作成してください")
+        die(f"実行中のPod '{pod_name(args)}' がありません。start{' --cpu' if args.cpu else ''} で作成してください")
     return pods[0]
 
 
@@ -104,24 +113,25 @@ def cmd_status(_args):
         gpu = (p.get("machine") or {}).get("gpuTypeId") or (p.get("gpu") or {}).get("id", "")
         if not p.get("gpuCount"):
             gpu = f"CPU {p.get('vcpuCount')} vCPU"
-        mark = " ← このツールの管理対象" if p.get("name") == POD_NAME else ""
+        mark = " ← このツールの管理対象" if p.get("name") in (POD_NAME, CPU_POD_NAME) else ""
         print(f"{p['id']}  {p.get('name')}  {p.get('desiredStatus')}  ${p.get('costPerHr')}/時  {gpu}{mark}")
 
 
 def cmd_start(args):
-    existing = managed_pods()
+    name = pod_name(args)
+    existing = managed_pods(name)
     if existing:
         p = existing[0]
-        print(f"Pod '{POD_NAME}' は既にあります: {p['id']}（{p.get('desiredStatus')}）。新しくは作りません")
+        print(f"Pod '{name}' は既にあります: {p['id']}（{p.get('desiredStatus')}）。新しくは作りません")
     else:
         body = {
-            "name": POD_NAME,
+            "name": name,
             "templateId": TEMPLATE_ID,
             "networkVolumeId": VOLUME_ID,
         }
         if args.cpu:
             # 2 vCPU・メモリ4GB。ファイルの確認や取り出し、軽いコマンド向け
-            body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS})
+            body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS, "ports": CPU_PORTS})
         else:
             body.update({"gpuTypeIds": args.gpu or GPU_TYPES, "gpuCount": 1})
         p = runpod("POST", "/pods", body)
@@ -135,6 +145,8 @@ def cmd_start(args):
             r = jupyter(p, "GET", "/api/status", timeout=15)
             if r.status_code == 200:
                 print(f"準備完了: {jupyter_base(p)}")
+                if args.cpu:
+                    print(f"メインページ: https://{p['id']}-8000.proxy.runpod.net")
                 return
             if r.status_code == 403:
                 die("JupyterLabにログインできません。テンプレートの JUPYTER_PASSWORD と、こちらの設定が同じ値か確認してください")
@@ -183,7 +195,7 @@ def _read_file(pod, remote):
 def cmd_exec(args):
     # クラウド環境の通信はWebSocket（JupyterLabのターミナル）を通さないので、
     # コマンドをファイルで置き、Pod内のランナーに実行させて結果のファイルを読む
-    pod = running_pod()
+    pod = running_pod(args)
     job = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     jobdir = f"{JOBS_DIR}/{job}"
     _ensure_dir(pod, jobdir)
@@ -218,7 +230,7 @@ def cmd_exec(args):
 
 
 def cmd_upload(args):
-    pod = running_pod()
+    pod = running_pod(args)
     with open(args.local, "rb") as f:
         data = base64.b64encode(f.read()).decode()
     body = {"type": "file", "format": "base64", "content": data}
@@ -232,7 +244,7 @@ def cmd_upload(args):
 
 
 def cmd_download(args):
-    pod = running_pod()
+    pod = running_pod(args)
     remote = args.remote.removeprefix("/workspace/").lstrip("/")
     r = jupyter(pod, "GET", "/files/" + urllib.parse.quote(remote), stream=True, timeout=300)
     if not r.ok:
@@ -244,9 +256,9 @@ def cmd_download(args):
 
 
 def cmd_stop(args):
-    pods = managed_pods()
+    pods = managed_pods(pod_name(args))
     if not pods:
-        print(f"Pod '{POD_NAME}' はありません。削除するものはありません")
+        print(f"Pod '{pod_name(args)}' はありません。削除するものはありません")
         return
     if not args.yes:
         for p in pods:
@@ -264,18 +276,22 @@ def main():
     s = sub.add_parser("start")
     g = s.add_mutually_exclusive_group()
     g.add_argument("--gpu", nargs="+", help="GPUの種類（先頭から順に試す）")
-    g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（ファイルの確認・取り出し用）")
+    g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（メインページ・ファイルの確認用）")
     s.add_argument("--wait", type=int, default=10, help="JupyterLabの応答を待つ分数")
     e = sub.add_parser("exec")
+    e.add_argument("--cpu", action="store_true", help="CPUのPodを扱う")
     e.add_argument("command")
     e.add_argument("--timeout", type=int, default=600)
     u = sub.add_parser("upload")
+    u.add_argument("--cpu", action="store_true", help="CPUのPodを扱う")
     u.add_argument("local")
     u.add_argument("remote")
     d = sub.add_parser("download")
+    d.add_argument("--cpu", action="store_true", help="CPUのPodを扱う")
     d.add_argument("remote")
     d.add_argument("local")
     t = sub.add_parser("stop")
+    t.add_argument("--cpu", action="store_true", help="CPUのPodを扱う")
     t.add_argument("--yes", action="store_true")
     args = ap.parse_args()
     {"status": cmd_status, "start": cmd_start, "exec": cmd_exec, "upload": cmd_upload,
