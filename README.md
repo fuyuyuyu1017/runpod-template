@@ -7,6 +7,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 - CUDA 12.8（ベースのみ。PyTorchなどは各仮想環境が持つ）
 - Python 3.12（`/usr/bin/python3.12`）
 - git、ffmpeg、sox、ビルドツール、SSH
+- rclone（外部ストレージへのバックアップ用）
 - JupyterLab（8888番）
 - ファイルブラウザ（8080番）
 - 起動スクリプト `start.sh`
@@ -33,7 +34,42 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 | Volume Mount Path | `/workspace` |
 | HTTP Ports | `8188, 8888, 8080` |
 | TCP Ports | `22` |
-| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（任意。ファイルブラウザは12文字以上が必須） |
+| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（任意。ファイルブラウザは12文字以上が必須）。下の「外部サービスのトークン」も参照 |
+
+## 外部サービスのトークン
+
+トークンやキーは **RunPodのSecrets** に登録し、テンプレートの環境変数からは参照だけします（値をテンプレートやチャットに直接書かない）。
+
+1. RunPodの画面の **Secrets** で、下の「Secretの名前」で登録する。
+2. テンプレートの **Environment Variables** に、変数名と `{{ RUNPOD_SECRET_<Secretの名前> }}` を設定する。
+3. 次に作るPodから使える。`start.sh` は設定の有無だけをログに出す（値は出さない）。
+
+| 環境変数 | Secretの名前（例） | 用途 |
+| --- | --- | --- |
+| `HF_TOKEN` | `hf_token` | Hugging Face。`huggingface_hub`（`hf download` など）が自動で使う。読み取り専用（Read）のトークンでよい |
+| `CIVITAI_TOKEN` | `civitai_token` | Civitai のモデルのダウンロード |
+| `RCLONE_CONFIG_OFFSITE_TYPE` | （Secretにしなくてよい） | `b2` |
+| `RCLONE_CONFIG_OFFSITE_ACCOUNT` | `b2_key_id` | Backblaze B2 の keyID |
+| `RCLONE_CONFIG_OFFSITE_KEY` | `b2_app_key` | Backblaze B2 の applicationKey |
+| `OFFSITE_BUCKET` | （Secretにしなくてよい） | バックアップ先のバケット名 |
+
+Civitai のモデルは、Pod上でトークンを付けてダウンロードする（ComfyUIの画面からのダウンロードではこのトークンは使われない）。
+
+```bash
+cd <保存先のフォルダ>
+wget --content-disposition --header="Authorization: Bearer $CIVITAI_TOKEN" \
+  "https://civitai.com/api/download/models/<モデルのバージョンID>"
+```
+
+外部バックアップは、`RCLONE_CONFIG_OFFSITE_*` を設定すると rclone から `offsite:` として使える（設定ファイルは不要）。
+
+```bash
+rclone lsd offsite:                                       # 接続の確認（バケットの一覧）
+rclone copy <フォルダ> "offsite:$OFFSITE_BUCKET/<保存先>"  # 追加・更新だけ。送り先のファイルは消さない
+```
+
+- `rclone sync` は送り先のファイルを消すことがあるため、バックアップには `copy` を使う。
+- B2 のキーはバックアップ用のバケット1つだけに限定して作る。
 
 ## ComfyUIのインストール（初回だけ）
 

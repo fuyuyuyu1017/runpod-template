@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3.12-dev \
         build-essential git git-lfs curl wget ca-certificates \
         ffmpeg sox libsox-fmt-all libgl1 libglib2.0-0 \
-        openssh-server tmux htop nano less rsync unzip tzdata \
+        openssh-server tmux htop nano less rsync unzip tzdata rclone \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd
 
