@@ -59,8 +59,10 @@ if [[ -f "$FB_DB" ]]; then
   echo "[start] ファイルブラウザ: 起動（ログ: $LOG_DIR/filebrowser.log）"
 fi
 
-# --- ComfyUI（8188番）。Volume上にインストール済みのときだけ ---
-if [[ -x "$COMFY_DIR/.venv/bin/python" ]]; then
+# --- ComfyUI（8188番）。Volume上にインストール済みで、GPUがあるときだけ ---
+if ! nvidia-smi -L >/dev/null 2>&1; then
+  echo "[start] ComfyUI: GPUが無いPod（CPUのPod）なので起動しません"
+elif [[ -x "$COMFY_DIR/.venv/bin/python" ]]; then
   (
     cd "$COMFY_DIR" || exit 1
     # --enable-cors-header: RunPodの中継経由のアクセスを、ComfyUIの送信元チェックで403にしないため

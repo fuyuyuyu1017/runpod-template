@@ -18,7 +18,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 1. RunPodに公開鍵が設定されていればSSHを起動
 2. JupyterLabを起動（パスワードは環境変数 `JUPYTER_PASSWORD`。未設定ならランダムに作ってログに出す）
 3. ファイルブラウザを起動（初回だけユーザー `admin` を作る。パスワードは `FILEBROWSER_PASSWORD`、未設定ならランダムに作ってログに出す）
-4. `/workspace/apps/ComfyUI` があればComfyUIを8188番で起動
+4. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを8188番で起動（CPUのPodでは起動しない）
 5. `/workspace/startup.d/*.sh` があれば順に実行
 
 ログは `/workspace/logs/` に保存されます。
@@ -51,6 +51,7 @@ Claude Code on the web などのクラウド環境から、Podの作成・コマ
 ```bash
 python3 tools/podctl.py status
 python3 tools/podctl.py start          # 既にあれば作らない。JupyterLabが応答するまで待つ
+python3 tools/podctl.py start --cpu    # GPUなしの安いPod（$0.06/時ほど）。ファイルの確認・取り出し用
 python3 tools/podctl.py exec 'nvidia-smi'
 python3 tools/podctl.py upload ./train.sh voice-lab/setup/train.sh   # 送り先のフォルダは自動で作る
 python3 tools/podctl.py download voice-lab/generated/out.wav ./out.wav
@@ -68,4 +69,5 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
 - `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
+- `--cpu` のPodは 2 vCPU・メモリ4GBです。JupyterLab・ファイルブラウザ・`exec` は使えますが、GPUを使う処理（学習や生成）はできません。
 - GPUは `--gpu "NVIDIA RTX A5000" "NVIDIA GeForce RTX 3090"` のように複数指定でき、空きのあるものが使われます。
