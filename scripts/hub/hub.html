@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>メインページ</title>
+<style>
+:root {
+  --bg: #f2f4f3; --surface: #ffffff; --ink: #16201c; --muted: #5a6863; --line: #d3dbd8;
+  --accent: #0d7466; --accent-ink: #ffffff; --accent-soft: #d6eee8; --star: #a8650f; --warn: #b42318;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, monospace; --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1412; --surface: #161e1b; --ink: #e2eae7; --muted: #92a19b; --line: #2a3531;
+    --accent: #3cc2ae; --accent-ink: #06201b; --accent-soft: #173a33; --star: #e3a940; --warn: #f97066; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+header h1 { font-size: 1rem; margin: 0; }
+header a { color: var(--accent); font-size: .9rem; }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button { border: 0; background: none; padding: 6px 12px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 500; }
+nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: .85rem; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 5px 12px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn:disabled { opacity: .5; cursor: default; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.runs label { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.runs .lab { font-size: .8rem; color: var(--muted); margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--surface); font-size: .85rem; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.item { border-top: 1px solid var(--line); padding: 10px 0; }
+.item h3 { font-size: .95rem; margin: 0 0 2px; }
+.clip { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 3px 0; }
+.clip audio { width: 100%; height: 36px; }
+.clip img, .grid img { max-width: 100%; max-height: 260px; border-radius: 4px; display: block; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.star { border: 0; background: none; font-size: 1.2rem; color: var(--muted); }
+.star[aria-pressed="true"] { color: var(--star); }
+.scores { display: grid; gap: 6px; margin: 8px 0; }
+.scores .row button { min-width: 2.2rem; }
+.scores button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+textarea, input[type=text], select { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+pre { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; overflow: auto; max-height: 60vh; font: .8rem/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td.num { text-align: right; font-family: var(--mono); }
+.err { color: var(--warn); }
+@media (max-width: 640px) { .clip { grid-template-columns: minmax(0, 1fr) auto; } .clip .name { grid-column: 1 / -1; } nav { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>メインページ</h1>
+  <span id="links"></span>
+  <nav>
+    <button data-tab="results" aria-selected="true">結果</button>
+    <button data-tab="checks" aria-selected="false">確認</button>
+    <button data-tab="tasks" aria-selected="false">作業</button>
+  </nav>
+</header>
+<main id="main"></main>
+<script>
+const LINKS = /*LINKS*/null;
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtTime = t => t ? new Date(t * 1000).toLocaleString("ja-JP", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "";
+const fmtBytes = b => b == null ? "?" : b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : (b / 1e6).toFixed(0) + " MB";
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (r.status === 401) { location.href = "/login"; throw new Error("login"); }
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+let timer = null;
+function setTimer(fn, ms) { clearInterval(timer); timer = fn ? setInterval(fn, ms) : null; }
+
+if (LINKS && LINKS.files) $("#links").innerHTML = `<a href="${esc(LINKS.files)}" target="_blank" rel="noopener">ファイルブラウザ</a> · <a href="${esc(LINKS.jupyter)}" target="_blank" rel="noopener">JupyterLab</a>`;
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+function show(tab) {
+  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+  setTimer(null);
+  ({results: showRuns, checks: showChecks, tasks: showTasks})[tab]();
+}
+
+// ---------------- 結果 ----------------
+let view = null, ratings = {};
+async function showRuns() {
+  const runs = await api("/api/runs");
+  let h = `<div class="card"><div class="row"><strong>生成した結果</strong><span class="muted">比べたいものにチェックして「開く」（複数選べます）</span>
+    <button class="btn primary" id="open" disabled>開く</button></div><div class="runs">`;
+  let lab = null;
+  for (const r of runs) {
+    if (r.lab !== lab) { lab = r.lab; h += `<div class="lab">${esc(lab)}</div>`; }
+    h += `<label><input type="checkbox" value="${esc(r.lab + "/" + r.run)}"><span>${esc(r.run)}</span><span class="muted mono">${fmtTime(r.mtime)}</span></label>`;
+  }
+  if (!runs.length) h += `<p class="muted">まだありません（/workspace/*-lab/generated/ を探します）</p>`;
+  $("#main").innerHTML = h + `</div></div>`;
+  const boxes = [...document.querySelectorAll(".runs input")];
+  boxes.forEach(b => b.onchange = () => $("#open").disabled = !boxes.some(x => x.checked));
+  $("#open").onclick = () => openRuns(boxes.filter(x => x.checked).map(x => x.value));
+}
+async function openRuns(keys) {
+  const [details, rt] = await Promise.all([Promise.all(keys.map(k => { const [lab, run] = k.split("/"); return api(`/api/run?lab=${encodeURIComponent(lab)}&run=${encodeURIComponent(run)}`); })), api("/api/ratings")]);
+  ratings = rt;
+  const conds = [], sentences = {};
+  for (const d of details) {
+    Object.assign(sentences, d.sentences);
+    for (const [c, files] of Object.entries(d.conditions))
+      conds.push({key: `${d.lab}/${d.run}/${c}`, label: keys.length > 1 ? `${d.run} / ${c}` : c, lab: d.lab, run: d.run, files});
+  }
+  view = {keys, conds, sentences, mode: "file", on: new Set(conds.map(c => c.key)), cond: conds[0]?.key};
+  renderView();
+}
+function media(c, f) {
+  const src = `/media/${encodeURIComponent(c.lab)}/${encodeURIComponent(c.run)}/${f.path.split("/").map(encodeURIComponent).join("/")}`;
+  return f.kind === "audio" ? `<audio controls preload="none" src="${src}"></audio>` : `<a href="${src}" target="_blank"><img loading="lazy" src="${src}" alt="${esc(f.name)}"></a>`;
+}
+function sentenceOf(name) {
+  const tag = name.replace(/\.[^.]+$/, "").replace(/^\d+_/, "");
+  return view.sentences[tag];
+}
+function renderView() {
+  const v = view;
+  let h = `<div class="card"><div class="row"><button class="btn" id="back">← 一覧へ</button><strong>${esc(v.keys.join("、"))}</strong></div>
+    <div class="row" style="margin-top:8px"><button class="chip" data-mode="file" aria-pressed="${v.mode === "file"}">ファイルごとに比べる</button>
+    <button class="chip" data-mode="cond" aria-pressed="${v.mode === "cond"}">条件ごとに評価する</button></div>`;
+  if (v.mode === "file") {
+    h += `<div class="chips">${v.conds.map(c => `<button class="chip" data-cond="${esc(c.key)}" aria-pressed="${v.on.has(c.key)}">${esc(c.label)}</button>`).join("")}</div></div>`;
+    const names = [...new Set(v.conds.filter(c => v.on.has(c.key)).flatMap(c => c.files.map(f => f.name)))].sort();
+    h += `<div class="card">`;
+    for (const name of names) {
+      const s = sentenceOf(name);
+      h += `<div class="item"><h3 class="mono">${esc(name)}</h3>${s ? `<div>${esc(s.text)}</div><div class="muted" style="font-size:.85rem">${esc(s.caption)}</div>` : ""}`;
+      for (const c of v.conds.filter(c => v.on.has(c.key))) {
+        const f = c.files.find(f => f.name === name);
+        if (!f) continue;
+        const k = `${c.key}/${name}`;
+        h += `<div class="clip"><span class="name muted">${esc(c.label)}</span>${media(c, f)}<button class="star" data-star="${esc(k)}" aria-pressed="${!!ratings[k]?.star}" title="良い">★</button></div>`;
+      }
+      h += `</div>`;
+    }
+    h += names.length ? `</div>` : `<p class="muted">音声・画像がありません</p></div>`;
+  } else {
+    const c = v.conds.find(c => c.key === v.cond) || v.conds[0];
+    const r = ratings[c.key] || {};
+    h += `<select id="cond" style="margin-top:8px">${v.conds.map(x => `<option value="${esc(x.key)}" ${x.key === c.key ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></div>
+      <div class="card"><div class="scores">${[["likeness", "本人らしさ"], ["natural", "自然さ"], ["emotion", "感情表現"]].map(([k, l]) =>
+        `<div class="row"><span style="min-width:6rem">${l}</span>${[1, 2, 3, 4, 5].map(n => `<button class="btn" data-score="${k}" data-n="${n}" aria-pressed="${r[k] === n}">${n}</button>`).join("")}</div>`).join("")}</div>
+      <label>読み間違い<input type="text" id="misread" value="${esc(r.misread)}"></label>
+      <label>メモ<textarea id="memo" rows="3">${esc(r.memo)}</textarea></label>
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="save">保存</button><span id="saved" class="muted">${r.updated ? "保存済み " + fmtTime(r.updated) : ""}</span></div></div>
+      <div class="card">${c.files.some(f => f.kind === "image") ? `<div class="grid">${c.files.map(f => `<div>${media(c, f)}<div class="mono muted">${esc(f.name)}</div></div>`).join("")}</div>` :
+        c.files.map(f => { const s = sentenceOf(f.name); return `<div class="item"><div class="mono">${esc(f.name)}</div>${s ? `<div>${esc(s.text)}</div>` : ""}${media(c, f)}</div>`; }).join("")}</div>`;
+  }
+  $("#main").innerHTML = h;
+  $("#back").onclick = showRuns;
+  document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { v.mode = b.dataset.mode; renderView(); });
+  document.querySelectorAll("[data-cond]").forEach(b => b.onclick = () => { v.on.has(b.dataset.cond) ? v.on.delete(b.dataset.cond) : v.on.add(b.dataset.cond); renderView(); });
+  document.querySelectorAll("[data-star]").forEach(b => b.onclick = async () => {
+    const k = b.dataset.star, on = b.getAttribute("aria-pressed") !== "true";
+    await api("/api/ratings", {key: k, value: on ? {star: true} : null});
+    on ? ratings[k] = {star: true} : delete ratings[k];
+    b.setAttribute("aria-pressed", on);
+  });
+  if (v.mode === "cond") {
+    const c = v.conds.find(c => c.key === v.cond) || v.conds[0];
+    const draft = {...(ratings[c.key] || {})};
+    $("#cond").onchange = e => { v.cond = e.target.value; renderView(); };
+    document.querySelectorAll("[data-score]").forEach(b => b.onclick = () => {
+      draft[b.dataset.score] = +b.dataset.n;
+      document.querySelectorAll(`[data-score="${b.dataset.score}"]`).forEach(x => x.setAttribute("aria-pressed", x === b));
+    });
+    $("#save").onclick = async () => {
+      const value = {likeness: draft.likeness, natural: draft.natural, emotion: draft.emotion, misread: $("#misread").value, memo: $("#memo").value};
+      await api("/api/ratings", {key: c.key, value});
+      ratings[c.key] = {...value, updated: Date.now() / 1000};
+      $("#saved").textContent = "保存しました";
+    };
+  }
+}
+
+// ---------------- 確認 ----------------
+async function showChecks() {
+  const [logs, disk] = await Promise.all([api("/api/logs"), api("/api/disk")]);
+  $("#main").innerHTML = `<div class="card"><div class="row"><strong>ログ</strong><select id="log" style="width:auto;flex:1">${logs.map(l =>
+      `<option value="${esc(l.path)}">${esc(l.path)}（${fmtTime(l.mtime)}）</option>`).join("")}</select>
+      <label class="row"><input type="checkbox" id="follow" checked>自動で更新</label></div><pre id="logtext" class="muted">ログを選んでください</pre></div>
+    <div class="card"><div class="row"><strong>容量</strong><button class="btn" id="du">調べる</button><span id="dustate" class="muted"></span></div><div id="disk"></div></div>`;
+  const load = async () => { if (!$("#log")?.value) return; const r = await api(`/api/log?path=${encodeURIComponent($("#log").value)}`); const pre = $("#logtext"); pre.textContent = r.lines.join("\n"); pre.classList.remove("muted"); pre.scrollTop = pre.scrollHeight; };
+  $("#log").onchange = load;
+  $("#follow").onchange = e => setTimer(e.target.checked ? load : null, 5000);
+  load(); setTimer(load, 5000);
+  const renderDisk = d => {
+    $("#dustate").textContent = d.running ? "調べています（数分かかります）" : d.at ? "調べた時刻 " + fmtTime(d.at) : "";
+    if (!d.rows.length) return;
+    const rows = [...d.rows].sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
+    $("#disk").innerHTML = (d.volume ? `<p class="muted">Network Volume：使用 ${fmtBytes(d.volume.used)} / 全体 ${fmtBytes(d.volume.total)}</p>` : "") +
+      `<table><tr><th>フォルダ</th><th>サイズ</th></tr>${rows.map(r => `<tr><td class="mono">${esc(r.path)}</td><td class="num">${fmtBytes(r.bytes)}</td></tr>`).join("")}</table>`;
+  };
+  renderDisk(disk);
+  $("#du").onclick = async () => {
+    await api("/api/disk", {});
+    const poll = setInterval(async () => { const d = await api("/api/disk"); renderDisk(d); if (!d.running) clearInterval(poll); }, 3000);
+  };
+}
+
+// ---------------- 作業 ----------------
+async function showTasks(openJob) {
+  const {tasks, jobs} = await api("/api/tasks");
+  $("#main").innerHTML = tasks.map(t => `<form class="card" data-task="${esc(t.id)}"><strong>${esc(t.title)}</strong><p class="muted" style="margin:4px 0 8px">${esc(t.desc)}</p>
+      ${t.params.map(p => `<label>${esc(p.label)}${p.kind === "textarea" ? `<textarea name="${esc(p.name)}" rows="4"></textarea>` : `<input type="text" name="${esc(p.name)}">`}</label>`).join("")}
+      <div class="row" style="margin-top:8px"><button class="btn primary">実行</button><span class="err"></span></div></form>`).join("") +
+    (tasks.length ? "" : `<p class="muted card">作業がありません（/workspace/hub/tasks/*.sh を読みます）</p>`) +
+    `<div class="card"><strong>実行した作業</strong><table>${jobs.map(j => `<tr><td><a href="#" data-job="${esc(j.id)}">${esc(j.title)}</a></td><td class="mono">${fmtTime(j.started)}</td><td>${j.exit == null ? "実行中" : j.exit === "0" ? "完了" : "失敗（" + esc(j.exit) + "）"}</td></tr>`).join("")}</table>
+    <pre id="jobout" hidden></pre></div>`;
+  document.querySelectorAll("form[data-task]").forEach(f => f.onsubmit = async e => {
+    e.preventDefault();
+    const params = Object.fromEntries(new FormData(f));
+    try { const r = await api("/api/tasks/run", {task: f.dataset.task, params}); showTasks(r.job); }
+    catch (err) { $(".err", f).textContent = err.message; }
+  });
+  const follow = async id => {
+    const r = await api(`/api/job?id=${encodeURIComponent(id)}`);
+    const pre = $("#jobout"); if (!pre) return;
+    pre.hidden = false; pre.textContent = r.lines.join("\n") + (r.exit == null ? "\n（実行中）" : `\n（終了コード ${r.exit}）`); pre.scrollTop = pre.scrollHeight;
+    if (r.exit != null) setTimer(null);
+  };
+  document.querySelectorAll("[data-job]").forEach(a => a.onclick = e => { e.preventDefault(); follow(a.dataset.job); setTimer(() => follow(a.dataset.job), 3000); });
+  if (openJob) { follow(openJob); setTimer(() => follow(openJob), 3000); }
+}
+
+show("results");
+</script>
+</body>
+</html>
