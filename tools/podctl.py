@@ -4,6 +4,7 @@
 使い方:
   python3 tools/podctl.py status                     アカウントの全Podを表示
   python3 tools/podctl.py start [--gpu 名前 ...]     Podを作り、JupyterLabが応答するまで待つ
+                                                     GPUが空いていなければ、空くまで待つ（--wait-gpu 分、既定30）
   python3 tools/podctl.py start --cpu                GPUなしの安いPodを作る（メインページ・ファイルの確認用）
                                                      exec / upload / download / stop も --cpu でこのPodを扱う
   python3 tools/podctl.py exec 'コマンド' [--timeout 秒]
@@ -44,7 +45,8 @@ VOLUME_ID = os.environ.get("RUNPOD_VOLUME_ID", "cnkmw89wfz")
 POD_NAME = os.environ.get("RUNPOD_POD_NAME", "ComfyUI-session-auto")
 # CPUのPodは別の名前にして、GPUのPodと同時に動かせるようにする
 CPU_POD_NAME = os.environ.get("RUNPOD_CPU_POD_NAME", "Hub-cpu-auto")
-# 先頭から順に空きのあるものが使われる
+# 先頭から順に空きのあるものが使われる。費用と環境の互換性から、普段は RTX 4090 だけに限る
+# （空いていなければ別のGPUにせず待つ。ユーザーと決めたルール）
 GPU_TYPES = os.environ.get("RUNPOD_GPU_TYPES", "NVIDIA GeForce RTX 4090").split(",")
 CPU_VCPUS = 2
 # CPUのPodで開くポート（メインページ、ファイルブラウザ、JupyterLab）。ComfyUIは動かさない
@@ -64,11 +66,17 @@ def auth_header(env, prefix):
     return {"Authorization": f"{prefix} {value}"} if value else {}
 
 
+class Unavailable(Exception):
+    """指定したGPU（またはCPU）に空きが無い"""
+
+
 def runpod(method, path, body=None, allow_404=False):
     r = requests.request(method, API_BASE + path, json=body, timeout=60,
                          headers=auth_header("RUNPOD_API_KEY", "Bearer"))
     if allow_404 and r.status_code == 404:
         return None
+    if method == "POST" and "no instances currently available" in r.text:
+        raise Unavailable(r.text[:200])
     if not r.ok:
         hint = ""
         if method == "POST":
@@ -134,7 +142,18 @@ def cmd_start(args):
             body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS, "ports": CPU_PORTS})
         else:
             body.update({"gpuTypeIds": args.gpu or GPU_TYPES, "gpuCount": 1})
-        p = runpod("POST", "/pods", body)
+        # 決めたGPUだけを使い、空いていなければ別のGPUにせず、空くまで待つ
+        give_up = time.time() + args.wait_gpu * 60
+        while True:
+            try:
+                p = runpod("POST", "/pods", body)
+                break
+            except Unavailable:
+                if time.time() > give_up:
+                    die(f"{args.wait_gpu}分待っても空きがありませんでした（{'CPU' if args.cpu else '・'.join(body['gpuTypeIds'])}）。"
+                        "時間をおいて start し直してください")
+                print("空きがありません。1分後にもう一度試します", flush=True)
+                time.sleep(60)
         if not p or "id" not in p:
             die("応答にPod IDがありません。status で確認してください")
         print(f"Podを作成しました: {p['id']}（${p.get('costPerHr')}/時）")
@@ -278,6 +297,7 @@ def main():
     g.add_argument("--gpu", nargs="+", help="GPUの種類（先頭から順に試す）")
     g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（メインページ・ファイルの確認用）")
     s.add_argument("--wait", type=int, default=10, help="JupyterLabの応答を待つ分数")
+    s.add_argument("--wait-gpu", type=int, default=30, help="空きが無いとき、空くまで待つ分数（0なら待たない）")
     e = sub.add_parser("exec")
     e.add_argument("--cpu", action="store_true", help="CPUのPodを扱う")
     e.add_argument("command")
