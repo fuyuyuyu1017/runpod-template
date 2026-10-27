@@ -43,3 +43,28 @@ bash /opt/runpod-template/scripts/install-comfyui.sh
 - `/workspace/apps/ComfyUI` に最新のリリース版を入れる（`COMFY_REF=v0.x.y` で版を指定できる）
 - 既存の `/workspace/runpod-slim/ComfyUI/models` を `extra_model_paths.yaml` で参照する（モデルはコピーしない）
 - 再実行すると最新のリリースへ更新する
+
+## クラウドのClaudeから操作する（tools/podctl.py）
+
+Claude Code on the web などのクラウド環境から、Podの作成・コマンド実行・ファイル転送・削除をするツールです。クラウド環境からはSSHが使えないため、コマンドはJupyterLab（8888番）のターミナルをHTTPSで使って実行します。
+
+```bash
+pip install websocket-client          # 初回だけ
+python3 tools/podctl.py status
+python3 tools/podctl.py start          # 既にあれば作らない。JupyterLabが応答するまで待つ
+python3 tools/podctl.py exec 'nvidia-smi'
+python3 tools/podctl.py upload ./train.sh voice-lab/setup/train.sh
+python3 tools/podctl.py download voice-lab/generated/out.wav ./out.wav
+python3 tools/podctl.py stop --yes     # Podを削除（/workspace は残る）
+```
+
+クラウド環境の設定：
+
+| 項目 | 値 |
+| --- | --- |
+| Allowed domains | `rest.runpod.io`、`*.proxy.runpod.net` |
+| Secrets / 環境変数 | `RUNPOD_API_KEY`（この用途専用のキー）、`JUPYTER_PASSWORD`（RunPodのテンプレートと同じ値） |
+
+- Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
+- `exec` は既定で600秒で打ち切ります。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
+- GPUは `--gpu "NVIDIA RTX A5000" "NVIDIA GeForce RTX 3090"` のように複数指定でき、空きのあるものが使われます。
