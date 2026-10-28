@@ -20,7 +20,7 @@
   - 環境変数 RUNPOD_API_KEY / JUPYTER_PASSWORD
   JupyterLabのパスワードは、RunPodのテンプレートの JUPYTER_PASSWORD と同じ値にする
 任意:
-  RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_CPU_POD_NAME / RUNPOD_GPU_TYPES（カンマ区切り）
+  RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_CPU_POD_NAME / RUNPOD_GPU_TYPES・RUNPOD_CPU_FLAVORS（カンマ区切り）
 
 通信はすべて JupyterLab（8888番）へのHTTPS。クラウド環境からは SSH も WebSocket も使えないため、
 exec はコマンドを /workspace/logs/podctl/<id>/cmd.sh に置き、Pod内の scripts/podctl-runner.sh が
@@ -49,6 +49,9 @@ CPU_POD_NAME = os.environ.get("RUNPOD_CPU_POD_NAME", "Hub-cpu-auto")
 # （空いていなければ別のGPUにせず待つ。ユーザーと決めたルール）
 GPU_TYPES = os.environ.get("RUNPOD_GPU_TYPES", "NVIDIA GeForce RTX 4090").split(",")
 CPU_VCPUS = 2
+# CPUの種類（先頭から順に空きのあるものが使われる）。cpu3c は特定のマシンで外からつながらない不具合があったので
+# 後回しにし、ほぼ同じ料金（2 vCPUで$0.06〜0.07/時）の別の種類を先に試す
+CPU_FLAVORS = os.environ.get("RUNPOD_CPU_FLAVORS", "cpu5c,cpu3g,cpu5g,cpu3c").split(",")
 # CPUのPodで開くポート（メインページ、ファイルブラウザ、JupyterLab）。ComfyUIは動かさない
 CPU_PORTS = ["8000/http", "8080/http", "8888/http"]
 JUPYTER_PORT = 8888
@@ -139,7 +142,7 @@ def cmd_start(args):
         }
         if args.cpu:
             # 2 vCPU・メモリ4GB。ファイルの確認や取り出し、軽いコマンド向け
-            body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS, "ports": CPU_PORTS})
+            body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS, "ports": CPU_PORTS, "cpuFlavorIds": CPU_FLAVORS})
         else:
             body.update({"gpuTypeIds": args.gpu or GPU_TYPES, "gpuCount": 1})
         # 決めたGPUだけを使い、空いていなければ別のGPUにせず、空くまで待つ
