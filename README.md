@@ -83,7 +83,7 @@ bash /opt/runpod-template/scripts/install-comfyui.sh
 
 ## クラウドのClaudeから操作する（tools/podctl.py）
 
-Claude Code on the web などのクラウド環境から、Podの作成・コマンド実行・ファイル転送・削除をするツールです。クラウド環境からはSSHもWebSocket（JupyterLabのターミナル）も使えないため、通信はすべてJupyterLab（8888番）へのHTTPSで行います。`exec` はコマンドを `/workspace/logs/podctl/<id>/cmd.sh` に置き、Pod内のランナー（`scripts/podctl-runner.sh`、`start.sh` が起動）が実行して、出力を同じフォルダに書きます。ジョブのフォルダは終了の1日後にランナーが消します。
+Claude Code on the web などのクラウド環境から、Podの作成・コマンド実行・ファイル転送・削除をするツールです。クラウド環境からはSSHもWebSocket（JupyterLabのターミナル）も使えないため、通信はすべてJupyterLab（8888番）へのHTTPSで行います。`exec` はコマンドを `/workspace/logs/podctl/<Pod ID>/<id>/cmd.sh` に置き、Pod内のランナー（`scripts/podctl-runner.sh`、`start.sh` が起動）が実行して、出力を同じフォルダに書きます。ジョブのフォルダは終了の1日後にランナーが消します。`/workspace` は同じNetwork Volumeを使う全Podで共有なので、フォルダをPodごとに分け、GPUとCPUのPodを同時に動かしても互いのコマンドを拾わないようにしています。
 
 ```bash
 python3 tools/podctl.py status
@@ -105,7 +105,7 @@ python3 tools/podctl.py stop --yes     # Podを削除（/workspace は残る）
 JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JUPYTER_PASSWORD` と同じ値にします。Network secretsを使えない場合は、環境変数 `RUNPOD_API_KEY`・`JUPYTER_PASSWORD` でも動きます。
 
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
-- `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
+- `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<Pod ID>/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
 - `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはメインページ（8000）・ファイルブラウザ（8080）・JupyterLab（8888）で、GPUを使う処理（学習や生成）はできません。
 - GPUは既定で RTX 4090 だけを使います。空いていないときは別のGPUにせず、1分ごとに試して空くまで待ちます（`--wait-gpu 分`、既定30分）。別のGPUは `--gpu "NVIDIA RTX A5000"` のように指定したときだけ使い、指定は空きのあるものが先頭から使われます。
 
