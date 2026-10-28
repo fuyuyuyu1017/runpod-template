@@ -4,7 +4,9 @@
 # 出力を out.log、終了コードを exit に書く。podctl はそれをHTTPSで読む。
 set -uo pipefail
 
-JOBS=/workspace/logs/podctl
+# /workspace は同じNetwork Volumeを使う全Podで共有なので、Podごとのフォルダに分ける
+# （分けないと、GPUのPod宛てのコマンドを同時に動いているCPUのPodが拾って実行してしまう）
+JOBS=/workspace/logs/podctl/${RUNPOD_POD_ID:-shared}
 mkdir -p "$JOBS"
 
 # 二重起動を防ぐ（start.sh と startup.d の両方から起動されても1つだけ動く）

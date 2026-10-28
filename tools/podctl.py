@@ -23,7 +23,7 @@
   RUNPOD_TEMPLATE_ID / RUNPOD_VOLUME_ID / RUNPOD_POD_NAME / RUNPOD_CPU_POD_NAME / RUNPOD_GPU_TYPES・RUNPOD_CPU_FLAVORS（カンマ区切り）
 
 通信はすべて JupyterLab（8888番）へのHTTPS。クラウド環境からは SSH も WebSocket も使えないため、
-exec はコマンドを /workspace/logs/podctl/<id>/cmd.sh に置き、Pod内の scripts/podctl-runner.sh が
+exec はコマンドを /workspace/logs/podctl/<Pod ID>/<id>/cmd.sh に置き、Pod内の scripts/podctl-runner.sh が
 実行して出力を同じフォルダに書く。それを読み取って表示する。
 """
 import argparse
@@ -218,7 +218,9 @@ def cmd_exec(args):
     # クラウド環境の通信はWebSocket（JupyterLabのターミナル）を通さないので、
     # コマンドをファイルで置き、Pod内のランナーに実行させて結果のファイルを読む
     pod = running_pod(args)
-    job = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    # ランナーはPodごとのフォルダ（Pod ID）だけを見る。/workspace は全Podで共有なので、
+    # 分けないと同時に動いている別のPodがコマンドを拾ってしまう
+    job = f"{pod['id']}/" + time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     jobdir = f"{JOBS_DIR}/{job}"
     _ensure_dir(pod, jobdir)
     r = jupyter(pod, "PUT", _contents_path(f"{jobdir}/cmd.sh"),
