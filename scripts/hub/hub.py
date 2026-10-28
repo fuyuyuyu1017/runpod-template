@@ -102,11 +102,16 @@ def sentences_for(d):
     """実行フォルダか、その上の setup/ にある sentences.tsv（タグ・指示・本文）を読む"""
     for p in [d / "sentences.tsv", d.parent.parent / "setup" / "compare_sentences.tsv"]:
         if p.is_file():
-            rows = {}
+            # 音声の名前は「番号_タグ」。同じタグの文が何本もあることがあるので、番号（#1から）でも引けるようにする
+            rows, n = {}, 0
             for line in p.read_text(encoding="utf-8").splitlines():
                 cols = line.split("\t")
-                if len(cols) >= 3:
-                    rows[cols[0]] = {"caption": cols[1], "text": cols[2]}
+                if line.startswith("#") or len(cols) < 3:
+                    continue
+                n += 1
+                row = {"caption": cols[1], "text": cols[2]}
+                rows["#%d" % n] = row
+                rows.setdefault(cols[0], row)
             return rows
     return {}
 

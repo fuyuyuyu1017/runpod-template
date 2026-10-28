@@ -126,8 +126,9 @@ function media(c, f) {
   return f.kind === "audio" ? `<audio controls preload="none" src="${src}"></audio>` : `<a href="${src}" target="_blank"><img loading="lazy" src="${src}" alt="${esc(f.name)}"></a>`;
 }
 function sentenceOf(name) {
-  const tag = name.replace(/\.[^.]+$/, "").replace(/^\d+_/, "");
-  return view.sentences[tag];
+  const m = name.replace(/\.[^.]+$/, "").match(/^(\d+)_(.*)$/);
+  if (!m) return view.sentences[name.replace(/\.[^.]+$/, "")];
+  return view.sentences["#" + parseInt(m[1], 10)] || view.sentences[m[2]];
 }
 function renderView() {
   const v = view;
