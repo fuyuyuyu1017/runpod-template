@@ -52,8 +52,9 @@ CPU_VCPUS = 2
 # CPUの種類（先頭から順に空きのあるものが使われる）。cpu3c は特定のマシンで外からつながらない不具合があったので
 # 後回しにし、ほぼ同じ料金（2 vCPUで$0.06〜0.07/時）の別の種類を先に試す
 CPU_FLAVORS = os.environ.get("RUNPOD_CPU_FLAVORS", "cpu5c,cpu3g,cpu5g,cpu3c").split(",")
-# CPUのPodで開くポート（メインページ、ファイルブラウザ、JupyterLab）。ComfyUIは動かさない
-CPU_PORTS = ["8000/http", "8080/http", "8888/http"]
+# CPUのPodで開くポート（メインページ、ファイルブラウザ、JupyterLab、追加のWebアプリ用の3000番）。
+# ComfyUIは動かさない。3000番で何を動かすかはVolumeの /workspace/startup.d 側で決める
+CPU_PORTS = ["8000/http", "8080/http", "8888/http", "3000/http"]
 JUPYTER_PORT = 8888
 
 
@@ -169,6 +170,7 @@ def cmd_start(args):
                 print(f"準備完了: {jupyter_base(p)}")
                 if args.cpu:
                     print(f"メインページ: https://{p['id']}-8000.proxy.runpod.net")
+                    print(f"3000番: https://{p['id']}-3000.proxy.runpod.net")
                 return
             if r.status_code == 403:
                 die("JupyterLabにログインできません。テンプレートの JUPYTER_PASSWORD と、こちらの設定が同じ値か確認してください")
