@@ -41,7 +41,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px 16px 80px; }
 .item { border-top: 1px solid var(--line); padding: 10px 0; }
 .item h3 { font-size: .95rem; margin: 0 0 2px; }
 .clip { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 3px 0; }
-.clip audio { width: 100%; height: 36px; }
+.clip audio, .player audio { width: 100%; height: 36px; }
+.player { min-width: 0; }
+.player video { width: 100%; max-height: 360px; background: #000; border-radius: 4px; display: block; }
+.matrix .player video { width: 320px; }
+.sidetext summary { font-size: .8rem; color: var(--muted); cursor: pointer; }
+.sidetext pre { max-height: 240px; margin: 4px 0 0; white-space: pre-wrap; }
+.loop { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: .8rem; margin-top: 2px; }
+.loop button { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 0 8px; font-size: .8rem; }
+.loop button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
 .clip img, .grid img { max-width: 100%; max-height: 260px; border-radius: 4px; display: block; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .star { border: 0; background: none; font-size: 1.2rem; color: var(--muted); }
@@ -71,7 +79,9 @@ td.num { text-align: right; font-family: var(--mono); }
 #cmpview { padding: 16px; }
 .side { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .side figure { margin: 0; } .side img { width: 100%; max-height: 75vh; object-fit: contain; } .side figcaption { text-align: center; color: var(--muted); }
 .wipe { position: relative; max-width: 100%; width: fit-content; margin: 0 auto; } .wipe img { display: block; max-width: 100%; max-height: 75vh; }
-.wipetop { position: absolute; inset: 0; } .wipetop img { width: 100%; height: 100%; object-fit: contain; }
+.wipe video { display: block; max-width: 100%; max-height: 75vh; }
+.wipetop { position: absolute; inset: 0; } .wipetop img, .wipetop video { width: 100%; height: 100%; object-fit: contain; }
+.side video { width: 100%; max-height: 75vh; background: #000; }
 #wipe { width: 100%; max-width: 600px; display: block; margin: 8px auto 0; }
 .cmpmeta { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 16px 16px; font-size: .9rem; }
 @media (max-width: 800px) { .ovbody, .cmpmeta, .side { grid-template-columns: 1fr; } }
@@ -167,10 +177,15 @@ const starKey = (c, f) => `${c.key}/${f.name}`;
 let picks = [];  // 比べる2枚 [{c, f}]
 function media(c, f) {
   const src = srcOf(c, f);
-  return f.kind === "audio" ? `<audio controls preload="none" src="${src}"></audio>` : `<img loading="lazy" src="${src}" alt="${esc(f.name)}" data-zoom="${esc(starKey(c, f))}">`;
+  const el = f.kind === "audio" ? `<audio controls preload="none" src="${src}"></audio>`
+    : f.kind === "video" ? `<video controls preload="metadata" playsinline src="${src}"></video>`
+    : `<img loading="lazy" src="${src}" alt="${esc(f.name)}" data-zoom="${esc(starKey(c, f))}">`;
+  return `<div class="player">${el}${sideText(f)}</div>`;
 }
+// 同じ名前の .txt（歌詞・説明など）
+const sideText = f => f.text ? `<details class="sidetext"><summary>テキスト</summary><pre>${esc(f.text)}</pre></details>` : "";
 const starBtn = (c, f) => `<button class="star" data-star="${esc(starKey(c, f))}" aria-pressed="${!!ratings[starKey(c, f)]?.star}" title="良い">★</button>`;
-const pickBtn = (c, f) => f.kind === "image" ? `<button class="chip" data-pick="${esc(starKey(c, f))}" aria-pressed="${picks.some(p => starKey(p.c, p.f) === starKey(c, f))}" title="2枚を選んで比べる">比</button>` : "";
+const pickBtn = (c, f) => f.kind !== "audio" ? `<button class="chip" data-pick="${esc(starKey(c, f))}" aria-pressed="${picks.some(p => starKey(p.c, p.f) === starKey(c, f))}" title="2つを選んで比べる">比</button>` : "";
 function sentenceOf(name) {
   const m = name.replace(/\.[^.]+$/, "").match(/^(\d+)_(.*)$/);
   if (!m) return view.sentences[name.replace(/\.[^.]+$/, "")];
@@ -218,7 +233,7 @@ function renderView() {
       }
       h += `</table>`;
     }
-    h += names.length ? "" : `<p class="muted">音声・画像がありません</p>`;
+    h += names.length ? "" : `<p class="muted">音声・画像・動画がありません</p>`;
     h += names.length > v.limit ? `<button class="btn" id="more">続きを表示（残り ${names.length - v.limit}）</button>` : "";
     h += `</div>`;
   } else {
@@ -283,12 +298,33 @@ function bindItems(root) {
   bindPickBar();
 }
 function pickBar() {
-  return picks.length ? `<div id="pickbar"><span>比べる画像 ${picks.length}/2</span><button class="btn primary" id="cmp" ${picks.length < 2 ? "disabled" : ""}>2枚を比べる</button><button class="btn" id="pickclear">選び直す</button></div>` : `<div id="pickbar" hidden></div>`;
+  return picks.length ? `<div id="pickbar"><span>比べるもの ${picks.length}/2</span><button class="btn primary" id="cmp" ${picks.length < 2 ? "disabled" : ""}>2つを比べる</button><button class="btn" id="pickclear">選び直す</button></div>` : `<div id="pickbar" hidden></div>`;
 }
 function bindPickBar() {
   if ($("#cmp")) $("#cmp").onclick = openCompare;
   if ($("#pickclear")) $("#pickclear").onclick = () => { picks = []; renderView(); };
 }
+
+// 長い音声・動画（30秒以上）には区間くり返し（A点・B点）を付ける
+const fmtSec = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+document.addEventListener("loadedmetadata", e => {
+  const m = e.target, box = m.closest?.(".player");
+  if (!box || box.querySelector(".loop") || !(m.duration >= 30)) return;
+  m.insertAdjacentHTML("afterend", `<div class="loop"><span class="muted">区間くり返し</span><button data-loop="a">A点</button><button data-loop="b">B点</button><button data-loop="x">解除</button><span class="mono muted"></span></div>`);
+  const ui = box.querySelector(".loop"), show = () => {
+    ui.querySelector(".mono").textContent = m._a != null ? `${fmtSec(m._a)} 〜 ${m._b != null ? fmtSec(m._b) : "…"}` : "";
+    ui.querySelector('[data-loop="a"]').setAttribute("aria-pressed", m._a != null);
+    ui.querySelector('[data-loop="b"]').setAttribute("aria-pressed", m._b != null);
+  };
+  ui.onclick = ev => {
+    const k = ev.target.dataset?.loop; if (!k) return;
+    if (k === "a") { m._a = m.currentTime; if (m._b != null && m._b <= m._a) m._b = null; }
+    if (k === "b" && m._a != null && m.currentTime > m._a) { m._b = m.currentTime; m.currentTime = m._a; }
+    if (k === "x") m._a = m._b = null;
+    show();
+  };
+  m.addEventListener("timeupdate", () => { if (m._a != null && m._b != null && m.currentTime >= m._b) m.currentTime = m._a; });
+}, true);
 
 // ---------------- 拡大・比較（全画面の重ね表示） ----------------
 function overlay(html) {
@@ -323,16 +359,29 @@ function openZoom(key) {
 }
 function openCompare() {
   const [a, b] = picks;
-  const ov = overlay(`<div class="ovbar"><strong>2枚を比べる</strong><span class="row"><button class="chip" data-cmp="side" aria-pressed="true">並べる</button><button class="chip" data-cmp="wipe" aria-pressed="false">重ねる</button></span>
+  const ov = overlay(`<div class="ovbar"><strong>2つを比べる</strong><span class="row"><button class="chip" data-cmp="side" aria-pressed="true">並べる</button><button class="chip" data-cmp="wipe" aria-pressed="false">重ねる</button></span>
       <button class="btn" id="ovclose" style="margin-left:auto">閉じる</button></div>
     <div id="cmpview"></div>
-    <div class="cmpmeta">${[a, b].map((p, i) => `<div><strong>${"AB"[i]}：${esc(p.c.label)}</strong> <span class="mono">${esc(p.f.name)}</span><div id="cm${i}" class="muted">読み込み中…</div></div>`).join("")}</div>`);
+    <div class="cmpmeta">${[a, b].map((p, i) => `<div><strong>${"AB"[i]}：${esc(p.c.label)}</strong> <span class="mono">${esc(p.f.name)}</span>${sideText(p.f)}<div id="cm${i}" class="muted">読み込み中…</div></div>`).join("")}</div>`);
+  const tag = (p, extra = "") => p.f.kind === "video" ? `<video src="${srcOf(p.c, p.f)}" preload="metadata" playsinline ${extra}></video>` : `<img src="${srcOf(p.c, p.f)}" alt="">`;
   const draw = mode => {
     ov.querySelectorAll("[data-cmp]").forEach(x => x.setAttribute("aria-pressed", x.dataset.cmp === mode));
     $("#cmpview").innerHTML = mode === "side"
-      ? `<div class="side">${[a, b].map((p, i) => `<figure><img src="${srcOf(p.c, p.f)}" alt=""><figcaption>${"AB"[i]}</figcaption></figure>`).join("")}</div>`
-      : `<div class="wipe"><img src="${srcOf(b.c, b.f)}" alt=""><div class="wipetop"><img src="${srcOf(a.c, a.f)}" alt=""></div></div>
+      ? `<div class="side">${[a, b].map((p, i) => `<figure>${tag(p, i ? "controls muted" : "controls")}<figcaption>${"AB"[i]}</figcaption></figure>`).join("")}</div>`
+      : `<div class="wipe">${tag(b, "muted")}<div class="wipetop">${tag(a)}</div></div>
          <input type="range" id="wipe" min="0" max="100" value="50" aria-label="AとBの境目"><p class="muted">左がA、右がB。つまみで境目を動かします</p>`;
+    const vids = [...$("#cmpview").querySelectorAll("video")];
+    if (vids.length === 2) {
+      // 2本の動画は一緒に再生・停止し、位置をAに合わせる。音はAだけ
+      const [va, vb] = vids;
+      va.onplay = () => { vb.currentTime = va.currentTime; vb.play(); };
+      va.onpause = () => vb.pause();
+      va.onseeked = () => { vb.currentTime = va.currentTime; };
+      vb.onplay = () => { if (va.paused) va.play(); };
+      vb.onpause = () => { if (!va.paused) va.pause(); };
+      if (mode === "wipe") $("#cmpview").insertAdjacentHTML("beforeend", `<div class="row" style="justify-content:center"><button class="btn" id="wplay">再生・停止</button><span class="muted">2本を一緒に動かします</span></div>`);
+      if ($("#wplay")) $("#wplay").onclick = () => va.paused ? va.play() : va.pause();
+    }
     if (mode === "wipe") {
       const set = () => $(".wipetop").style.clipPath = `inset(0 ${100 - $("#wipe").value}% 0 0)`;
       $("#wipe").oninput = set; set();
