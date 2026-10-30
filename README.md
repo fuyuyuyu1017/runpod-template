@@ -121,6 +121,7 @@ CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開�
   - 動画も「比」で2本を選べる。並べても重ねても、2本は一緒に再生・停止し、位置はAに合わせる（音はAだけ）。
   - 30秒以上の音声・動画には「区間くり返し」が出る。再生中にA点・B点を押すと、その間をくり返す（曲のサビの聞き比べなど）。
   - メディアと同じ名前の `.txt`（例：`001_song.mp3` と `001_song.txt`）があれば、歌詞や説明として「テキスト」に出す。
+  - 実行フォルダに `.html`（比較用に作った `index.html` など）があれば、上に「ページ」として出し、別タブで開ける。ページの中で画像・音声・動画は表示できるが、メインページのAPIは呼べない（`connect-src 'none'`）。
   - 件数が多いときは60件ずつ出す。
 - 実行フォルダに `hub.json` を置くと、一覧の表示名・説明と、条件の並び順・表示名・評価項目を決められる（無ければ名前順。数字は数として並ぶ）。実験スクリプトが生成のときに書く。評価項目（`scores` は1〜5、`texts` は自由記入）は、分野ごとの既定を `<分野>-lab/setup/hub.json` に置ける。どちらにも無ければ ☆ とメモだけ。
 
@@ -132,8 +133,8 @@ CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開�
 
 - 探す場所を足す：`/workspace/hub/sources.json` に `{"名前": "/workspace からの相対パス"}` を書く。そのフォルダの下のフォルダが1つの実行になり、直下のファイルは「（直下）」にまとまる。`sources.json` が無いときの既定は `{"ComfyUI": "apps/ComfyUI/output"}`（ComfyUI の出力）。
 
-- 確認：`/workspace/logs/` と `/workspace/*-lab/logs/` のログの末尾、フォルダごとの容量。
-- 作業：`/workspace/hub/tasks/*.sh` をボタンで実行する。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
+- 確認：`/workspace/` 直下・`/workspace/logs/`・`/workspace/*-lab/logs/` のログ（`*.log`）の末尾、フォルダごとの容量。
+- 作業：`/workspace/hub/tasks/` の `*.sh`（bash で実行）と `*.py`（メインページと同じ Python で実行）をボタンで実行する。置き場所は環境変数 `HUB_TASKS` で変えられる（PCで動かすときに使う）。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
 
 ```bash
 # title: 作業の名前

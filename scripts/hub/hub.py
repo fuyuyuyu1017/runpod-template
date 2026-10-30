@@ -2,12 +2,13 @@
 """Pod内で動くメインページ（8000番）。中身はPodの中だけで扱い、外のサービスには送らない。
 
 - 結果：/workspace/*-lab/generated/<実行>/ の画像・音声・動画を一覧にし、見る・聞く・評価する
-  （同じ名前の .txt があれば、歌詞や説明として横に出す）
+  （同じ名前の .txt があれば、歌詞や説明として横に出す。.html は「ページ」として別タブで開ける）
   （評価は /workspace/hub/ratings.json に保存。実行フォルダに hub.json があれば、表示名・説明と
     条件の並び順・表示名・評価項目に使う。評価項目は <分野>-lab/setup/hub.json で分野ごとの既定も置ける）
   ほかに探す場所（ComfyUIの出力など）は /workspace/hub/sources.json で足せる。PNGの生成情報も読む
 - 確認：ログの末尾、容量の内訳
-- 作業：/workspace/hub/tasks/*.sh を、決めた入力欄だけでボタンから実行する
+- 作業：/workspace/hub/tasks/ の *.sh（bash）と *.py（このPython）を、決めた入力欄だけでボタンから実行する
+  （置き場所は環境変数 HUB_TASKS で変えられる。PCで動かすときに使う）
   （スクリプトの先頭に "# title: 名前" "# desc: 説明" "# param: 変数名 | 表示名 | text か textarea"。
     入力値は環境変数 HUB_<変数名> で渡す）
 
@@ -39,6 +40,8 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("HUB_ROOT", "/workspace"))
 HUB = ROOT / "hub"
+TASKS = Path(os.environ.get("HUB_TASKS") or HUB / "tasks")
+RUNNERS = {".sh": ["bash"], ".py": [sys.executable, "-X", "utf8"]}  # 作業スクリプトの拡張子と実行のしかた
 PORT = int(os.environ.get("HUB_PORT", "8000"))
 PASSWORD = os.environ.get("HUB_PASSWORD") or os.environ.get("FILEBROWSER_PASSWORD") or ""
 if not PASSWORD:
@@ -50,6 +53,7 @@ AUDIO = {".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a"}
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 VIDEO = {".mp4", ".m4v", ".webm", ".mov"}
 MEDIA = AUDIO | IMAGE | VIDEO
+PAGES = {".html", ".htm"}  # 実行フォルダに置いた比較ページ（index.html など）。別タブで開く
 
 
 def kind_of(path):
@@ -208,6 +212,8 @@ def run_detail(lab, run):
         conds.setdefault(cond, []).append({
             "name": f.name, "path": str(rel), "kind": kind_of(f), "mtime": f.stat().st_mtime, "text": side_text(f),
         })
+    pages = [f.relative_to(d).as_posix() for f in sorted(d.rglob("*") if run != ROOT_RUN else d.iterdir())
+             if f.is_file() and f.suffix.lower() in PAGES][:20]
     meta = run_meta(d)
     # 評価項目：実行の hub.json → 分野の setup/hub.json の順。どちらにも無ければ ☆ とメモだけ
     lab_meta = read_json(ROOT / lab / "setup" / "hub.json", {}) if is_lab else {}
@@ -225,7 +231,7 @@ def run_detail(lab, run):
                            "files": conds[c]})
     title = str(meta.get("title", "")) or (f"{lab}{ROOT_RUN}" if run == ROOT_RUN else "")
     return {"lab": lab, "run": run, "title": title, "note": str(meta.get("note", "")),
-            "conditions": conditions, "sentences": sentences_for(d, is_lab), "scores": scores, "texts": texts}
+            "conditions": conditions, "pages": pages, "sentences": sentences_for(d, is_lab), "scores": scores, "texts": texts}
 
 
 # PNGに埋め込まれた生成情報（ComfyUI は prompt・workflow、ほかのツールは parameters など）
@@ -336,7 +342,7 @@ def delete_self():
 
 def list_logs():
     files = []
-    for base in [ROOT / "logs"] + [lab / "logs" for lab in labs()]:
+    for base in [ROOT, ROOT / "logs"] + [lab / "logs" for lab in labs()]:
         if base.is_dir():
             files += [f for f in base.glob("*.log") if f.is_file()]
     files.sort(key=lambda f: -f.stat().st_mtime)
@@ -363,7 +369,7 @@ def disk_job():
 
 def list_tasks():
     tasks = []
-    for f in sorted((HUB / "tasks").glob("*.sh")):
+    for f in sorted(f for f in TASKS.glob("*") if f.suffix in RUNNERS and f.is_file()):
         t = {"id": f.stem, "title": f.stem, "desc": "", "params": []}
         for line in f.read_text(encoding="utf-8").splitlines()[:30]:
             m = re.match(r"#\s*(title|desc|param):\s*(.*)", line)
@@ -394,11 +400,11 @@ def start_task(task_id, params):
     jd = HUB / "jobs" / job
     jd.mkdir(parents=True)
     write_json(jd / "job.json", {"task": task_id, "title": task["title"], "started": time.time()})
-    script = HUB / "tasks" / f"{task_id}.sh"
+    script = next(TASKS / (task_id + ext) for ext in RUNNERS if (TASKS / (task_id + ext)).is_file())
 
     def run():
         with open(jd / "out.log", "wb") as out:
-            code = subprocess.call(["bash", str(script)], cwd=ROOT, env=env, stdout=out,
+            code = subprocess.call(RUNNERS[script.suffix] + [str(script)], cwd=ROOT, env=env, stdout=out,
                                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         (jd / "exit").write_text(str(code))
 
@@ -556,7 +562,8 @@ class Handler(BaseHTTPRequestHandler):
         lab, run, path = parts
         d = run_dir(lab, run)
         f = d / path
-        if not inside(f, d) or not f.is_file() or f.suffix.lower() not in MEDIA:
+        page = f.suffix.lower() in PAGES
+        if not inside(f, d) or not f.is_file() or f.suffix.lower() not in MEDIA | PAGES:
             raise FileNotFoundError(rel)
         size = f.stat().st_size
         start, end = 0, size - 1
@@ -577,6 +584,8 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Cache-Control", "private, max-age=3600")
+        if page:  # ページは同じフォルダの画像・音声だけ読める。メインページのAPIは呼べないようにする
+            self.send_header("Content-Security-Policy", "connect-src 'none'; form-action 'none'")
         self.end_headers()
         if self.command == "HEAD":
             return
@@ -610,7 +619,7 @@ MAIN_PAGE = (Path(__file__).with_name("hub.html")).read_text(encoding="utf-8")
 
 def main():
     HUB.mkdir(parents=True, exist_ok=True)
-    (HUB / "tasks").mkdir(exist_ok=True)
+    TASKS.mkdir(parents=True, exist_ok=True)
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"[hub] {PORT}番で起動しました", flush=True)
     srv.serve_forever()
