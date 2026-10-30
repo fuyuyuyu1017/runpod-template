@@ -113,13 +113,21 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 
 CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開く、Pod内だけで動くページです。中身はPodの外に送りません。パスワードはファイルブラウザと同じ（`FILEBROWSER_PASSWORD`。`HUB_PASSWORD` があればそちら）。
 
-- 結果：`/workspace/*-lab/generated/<実行>/` の音声・画像を一覧にし、ファイルごとに条件を並べて比べたり、条件ごとに評価（本人らしさ・自然さ・感情表現、読み間違い、メモ、☆）したりする。評価は `/workspace/hub/ratings.json` に保存。文の本文は、実行フォルダの `sentences.tsv` か `<分野>-lab/setup/compare_sentences.tsv`（タグ・指示・本文のタブ区切り）があれば表示する。
-  - 実行フォルダに `hub.json` を置くと、一覧の表示名・説明と、条件の並び順・表示名を決められる（無ければ名前順。数字は数として並ぶ）。実験スクリプトが生成のときに書く。
+- 結果：`/workspace/*-lab/generated/<実行>/` の音声・画像を一覧にし、3つの見方で見る。☆と評価は `/workspace/hub/ratings.json` に保存。文の本文は、実行フォルダの `sentences.tsv` か `<分野>-lab/setup/compare_sentences.tsv`（タグ・指示・本文のタブ区切り）があれば表示する。
+  - ファイルごとに比べる：同じ名前のファイルを条件ごとに縦に並べる。
+  - 格子で並べる：行＝ファイル、列＝条件の表。
+  - 条件ごとに見る・評価する：1つの条件を並べ方（名前・新しい順・古い順・☆を先に）と「☆だけ」で絞って見て、条件に評価を付ける。
+  - 画像は押すと拡大し、←→で前後へ動く。PNGに埋め込まれた生成情報（ComfyUI のプロンプト・モデル・LoRA・seed など）を横に出す。「比」で2枚を選ぶと、並べるか、重ねて境目を動かして比べられる。
+  - 件数が多いときは60件ずつ出す。
+- 実行フォルダに `hub.json` を置くと、一覧の表示名・説明と、条件の並び順・表示名・評価項目を決められる（無ければ名前順。数字は数として並ぶ）。実験スクリプトが生成のときに書く。評価項目（`scores` は1〜5、`texts` は自由記入）は、分野ごとの既定を `<分野>-lab/setup/hub.json` に置ける。どちらにも無ければ ☆ とメモだけ。
 
 ```json
 {"title": "LoRA ステップ比較", "note": "同じ15文・同じ乱数",
- "conditions": {"s1000": {"label": "1000ステップ"}, "final": {"label": "3000ステップ", "note": "最後の保存"}}}
+ "conditions": {"s1000": {"label": "1000ステップ"}, "final": {"label": "3000ステップ", "note": "最後の保存"}},
+ "scores": [{"key": "natural", "label": "自然さ"}], "texts": ["気づいたこと"]}
 ```
+
+- 探す場所を足す：`/workspace/hub/sources.json` に `{"名前": "/workspace からの相対パス"}` を書く。そのフォルダの下のフォルダが1つの実行になり、直下のファイルは「（直下）」にまとまる。`sources.json` が無いときの既定は `{"ComfyUI": "apps/ComfyUI/output"}`（ComfyUI の出力）。
 
 - 確認：`/workspace/logs/` と `/workspace/*-lab/logs/` のログの末尾、フォルダごとの容量。
 - 作業：`/workspace/hub/tasks/*.sh` をボタンで実行する。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
