@@ -178,10 +178,11 @@ async function openRuns(keys) {
   const images = conds.some(c => c.files.some(f => f.kind === "image"));
   const pages = details.flatMap(d => d.pages.map(path => ({path, src: srcOf(d, {path}), label: keys.length > 1 ? `${d.title || d.run} / ${path}` : path})));
   view = {keys, titles, notes, conds, pages, sentences, mode: images && conds.length === 1 ? "cond" : "file", on: new Set(conds.map(c => c.key)), cond: conds[0]?.key,
-    sort: "name", starOnly: false, limit: PAGE};
+    sort: "name", starOnly: false, step: images ? IMAGE_PAGE : PAGE};
+  view.limit = view.step;
   renderView();
 }
-const PAGE = 60;
+const PAGE = 60, IMAGE_PAGE = 20;  // 画像は重いので少なめに出す
 const byName = (a, b) => a.localeCompare(b, undefined, {numeric: true});
 const srcOf = (c, f) => `/media/${encodeURIComponent(c.lab)}/${encodeURIComponent(c.run)}/${f.path.split("/").map(encodeURIComponent).join("/")}`;
 const starKey = (c, f) => `${c.key}/${f.name}`;
@@ -190,7 +191,7 @@ function media(c, f) {
   const src = srcOf(c, f);
   const el = f.kind === "audio" ? `<audio controls preload="none" src="${src}"></audio>`
     : f.kind === "video" ? `<video controls preload="metadata" playsinline src="${src}"></video>`
-    : `<img loading="lazy" src="${src}" alt="${esc(f.name)}" data-zoom="${esc(starKey(c, f))}">`;
+    : `<img loading="lazy" decoding="async" src="${src}?thumb=1" alt="${esc(f.name)}" data-zoom="${esc(starKey(c, f))}">`;
   return `<div class="player">${el}${sideText(f)}</div>`;
 }
 // 同じ名前の .txt（歌詞・説明など）
@@ -267,14 +268,14 @@ function renderView() {
   }
   $("#main").innerHTML = h + pickBar();
   $("#back").onclick = () => { picks = []; showRuns(); };
-  document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { v.mode = b.dataset.mode; v.limit = PAGE; renderView(); });
+  document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { v.mode = b.dataset.mode; v.limit = v.step; renderView(); });
   document.querySelectorAll("[data-cond]").forEach(b => b.onclick = () => { v.on.has(b.dataset.cond) ? v.on.delete(b.dataset.cond) : v.on.add(b.dataset.cond); renderView(); });
-  if ($("#more")) $("#more").onclick = () => { v.limit += PAGE; renderView(); };
+  if ($("#more")) $("#more").onclick = () => { v.limit += v.step; renderView(); };
   bindItems($("#main"));
   if (v.mode === "cond") {
     const c = v.conds.find(c => c.key === v.cond) || v.conds[0];
     const draft = {...(ratings[c.key] || {})};
-    $("#cond").onchange = e => { v.cond = e.target.value; v.limit = PAGE; renderView(); };
+    $("#cond").onchange = e => { v.cond = e.target.value; v.limit = v.step; renderView(); };
     $("#sort").onchange = e => { v.sort = e.target.value; renderView(); };
     $("#staronly").onchange = e => { v.starOnly = e.target.checked; renderView(); };
     document.querySelectorAll("[data-score]").forEach(b => b.onclick = () => {
