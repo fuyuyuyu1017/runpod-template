@@ -2,11 +2,15 @@
 """Pod内で動くメインページ（8000番）。中身はPodの中だけで扱い、外のサービスには送らない。
 
 - 結果：/workspace/*-lab/generated/<実行>/ の画像・音声を一覧にし、見る・聞く・評価する
-  （評価は /workspace/hub/ratings.json に保存）
+  （評価は /workspace/hub/ratings.json に保存。実行フォルダに hub.json があれば、表示名・説明と
+    条件の並び順・表示名に使う）
 - 確認：ログの末尾、容量の内訳
 - 作業：/workspace/hub/tasks/*.sh を、決めた入力欄だけでボタンから実行する
   （スクリプトの先頭に "# title: 名前" "# desc: 説明" "# param: 変数名 | 表示名 | text か textarea"。
     入力値は環境変数 HUB_<変数名> で渡す）
+
+- Pod：CPUのPodでは、3000番のアプリへのリンクと「Podを削除」ボタンを出す
+  （削除はRunPodがPodに渡す RUNPOD_API_KEY で自分自身だけを消す）
 
 パスワードは環境変数 HUB_PASSWORD、無ければ FILEBROWSER_PASSWORD。標準ライブラリだけで動く。
 """
@@ -18,11 +22,13 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -79,6 +85,19 @@ def tail(path, nbytes=65536, lines=120):
 
 # ---------------- 結果 ----------------
 
+def run_meta(d):
+    """実行フォルダの hub.json（任意）。例：
+    {"title": "LoRA ステップ比較", "note": "同じ15文",
+     "conditions": {"s1000": {"label": "1000ステップ"}, "final": {"label": "3000ステップ", "note": "最後"}}}
+    conditions に書いた順が並び順になる。書いていない条件は後ろに名前順（数字は数として）で並ぶ。"""
+    meta = read_json(d / "hub.json", {})
+    return meta if isinstance(meta, dict) else {}
+
+
+def natural_key(name):
+    return [(0, int(t), "") if t.isdigit() else (1, 0, t) for t in re.split(r"(\d+)", name) if t]
+
+
 def list_runs():
     runs = []
     for lab in labs():
@@ -87,7 +106,9 @@ def list_runs():
             continue
         for d in gen.iterdir():
             if d.is_dir():
-                runs.append({"lab": lab.name, "run": d.name, "mtime": d.stat().st_mtime})
+                meta = run_meta(d)
+                runs.append({"lab": lab.name, "run": d.name, "mtime": d.stat().st_mtime,
+                             "title": str(meta.get("title", "")), "note": str(meta.get("note", ""))})
     return sorted(runs, key=lambda r: -r["mtime"])
 
 
@@ -128,7 +149,52 @@ def run_detail(lab, run):
         conds.setdefault(cond, []).append({
             "name": f.name, "path": str(rel), "kind": "audio" if ext in AUDIO else "image",
         })
-    return {"lab": lab, "run": run, "conditions": conds, "sentences": sentences_for(d)}
+    meta = run_meta(d)
+    info = meta.get("conditions") if isinstance(meta.get("conditions"), dict) else {}
+    order = {name: i for i, name in enumerate(info)}
+    names = sorted(conds, key=lambda c: (order.get(c, len(order)), natural_key(c)))
+    # 条件名が数字だけだとJSのオブジェクトでは並びが変わるので、配列で返す
+    conditions = []
+    for c in names:
+        ci = info.get(c) if isinstance(info.get(c), dict) else {}
+        conditions.append({"name": c, "label": str(ci.get("label") or c), "note": str(ci.get("note", "")),
+                           "files": conds[c]})
+    return {"lab": lab, "run": run, "title": str(meta.get("title", "")), "note": str(meta.get("note", "")),
+            "conditions": conditions, "sentences": sentences_for(d)}
+
+
+# ---------------- Pod ----------------
+
+def pod_info():
+    """RunPodのPodの中で動いているときだけ中身がある。PCでは空"""
+    pod = os.environ.get("RUNPOD_POD_ID", "")
+    if not pod:
+        return {}
+    info = {"id": pod,
+            "files": f"https://{pod}-8080.proxy.runpod.net",
+            "jupyter": f"https://{pod}-8888.proxy.runpod.net"}
+    try:
+        with socket.create_connection(("127.0.0.1", 3000), timeout=0.3):
+            info["app3000"] = f"https://{pod}-3000.proxy.runpod.net"
+    except OSError:
+        pass
+    # 削除ボタンはCPUのPodだけ（GPUのPodは学習中かもしれないので、ここからは消さない）
+    if os.environ.get("RUNPOD_API_KEY") and os.environ.get("RUNPOD_GPU_COUNT", "0") in ("", "0"):
+        info["deletable"] = True
+    return info
+
+
+def delete_self():
+    pod = os.environ["RUNPOD_POD_ID"]
+    body = json.dumps({"query": "mutation($id: String!) { podTerminate(input: {podId: $id}) }",
+                       "variables": {"id": pod}}).encode()
+    req = urllib.request.Request("https://api.runpod.io/graphql", data=body, headers={
+        "Content-Type": "application/json", "User-Agent": "runpod-template-hub",
+        "Authorization": "Bearer " + os.environ["RUNPOD_API_KEY"]})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        res = json.loads(r.read() or b"{}")
+    if res.get("errors"):
+        raise RuntimeError(res["errors"][0].get("message", "削除できませんでした"))
 
 
 # ---------------- 確認 ----------------
@@ -266,10 +332,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(302, b"", headers=[("Location", "/login")])
         try:
             if url.path == "/":
-                pod = os.environ.get("RUNPOD_POD_ID", "")
-                links = {"files": f"https://{pod}-8080.proxy.runpod.net" if pod else "",
-                         "jupyter": f"https://{pod}-8888.proxy.runpod.net" if pod else ""}
-                page = MAIN_PAGE.replace("/*LINKS*/null", json.dumps(links))
+                page = MAIN_PAGE.replace("/*POD*/null", json.dumps(pod_info()))
                 return self.send(200, page, "text/html; charset=utf-8")
             if url.path == "/api/runs":
                 return self.send(200, list_runs())
@@ -330,6 +393,17 @@ class Handler(BaseHTTPRequestHandler):
             if not DISK["running"]:
                 DISK["running"] = True
                 threading.Thread(target=disk_job, daemon=True).start()
+            return self.send(200, {"ok": True})
+        if url.path == "/api/pod/delete":
+            info = pod_info()
+            if not info.get("deletable") or data.get("confirm") != info["id"]:
+                return self.send(400, {"error": "このPodはここから削除できません"})
+            try:
+                delete_self()
+            except Exception as e:  # noqa: BLE001  画面に理由を出す
+                print(f"[hub] Podの削除に失敗: {e}", flush=True)
+                return self.send(502, {"error": f"削除できませんでした（{e}）"})
+            print("[hub] Podの削除を頼みました", flush=True)
             return self.send(200, {"ok": True})
         if url.path == "/api/tasks/run":
             try:

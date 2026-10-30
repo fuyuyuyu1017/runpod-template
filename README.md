@@ -114,6 +114,13 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開く、Pod内だけで動くページです。中身はPodの外に送りません。パスワードはファイルブラウザと同じ（`FILEBROWSER_PASSWORD`。`HUB_PASSWORD` があればそちら）。
 
 - 結果：`/workspace/*-lab/generated/<実行>/` の音声・画像を一覧にし、ファイルごとに条件を並べて比べたり、条件ごとに評価（本人らしさ・自然さ・感情表現、読み間違い、メモ、☆）したりする。評価は `/workspace/hub/ratings.json` に保存。文の本文は、実行フォルダの `sentences.tsv` か `<分野>-lab/setup/compare_sentences.tsv`（タグ・指示・本文のタブ区切り）があれば表示する。
+  - 実行フォルダに `hub.json` を置くと、一覧の表示名・説明と、条件の並び順・表示名を決められる（無ければ名前順。数字は数として並ぶ）。実験スクリプトが生成のときに書く。
+
+```json
+{"title": "LoRA ステップ比較", "note": "同じ15文・同じ乱数",
+ "conditions": {"s1000": {"label": "1000ステップ"}, "final": {"label": "3000ステップ", "note": "最後の保存"}}}
+```
+
 - 確認：`/workspace/logs/` と `/workspace/*-lab/logs/` のログの末尾、フォルダごとの容量。
 - 作業：`/workspace/hub/tasks/*.sh` をボタンで実行する。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
 
@@ -122,5 +129,7 @@ CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開�
 # desc: 説明
 # param: URLS | URL（1行に1つ） | textarea
 ```
+
+- ヘッダー：ファイルブラウザ・JupyterLab と、3000番で何か動いていればそのリンク。CPUのPodでは「Podを削除」ボタンも出る（確認つき。RunPodがPodに渡す `RUNPOD_API_KEY` で自分だけを削除する。Network Volume は残る）。PCで動かすとき（`RUNPOD_POD_ID` が無いとき）は出ない。
 
 GPUのPodでも動いていますが、テンプレートのポートに8000番が無いので外からは開けません。
