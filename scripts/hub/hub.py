@@ -3,7 +3,8 @@
 
 - 結果：/workspace/*-lab/generated/<実行>/ の画像・音声を一覧にし、見る・聞く・評価する
   （評価は /workspace/hub/ratings.json に保存。実行フォルダに hub.json があれば、表示名・説明と
-    条件の並び順・表示名に使う）
+    条件の並び順・表示名・評価項目に使う。評価項目は <分野>-lab/setup/hub.json で分野ごとの既定も置ける）
+  ほかに探す場所（ComfyUIの出力など）は /workspace/hub/sources.json で足せる。PNGの生成情報も読む
 - 確認：ログの末尾、容量の内訳
 - 作業：/workspace/hub/tasks/*.sh を、決めた入力欄だけでボタンから実行する
   （スクリプトの先頭に "# title: 名前" "# desc: 説明" "# param: 変数名 | 表示名 | text か textarea"。
@@ -22,6 +23,7 @@ import os
 import re
 import secrets
 import shutil
+import struct
 import socket
 import subprocess
 import sys
@@ -29,6 +31,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import zlib
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -50,6 +53,23 @@ DISK = {"running": False, "at": None, "rows": []}
 
 def labs():
     return sorted(p for p in ROOT.glob("*-lab") if p.is_dir())
+
+
+ROOT_RUN = "（直下）"  # 足した探す場所の直下にあるファイル（ComfyUIの output/ など）をまとめた実行の名前
+
+
+def sources():
+    """結果を探す場所 {名前: (フォルダ, 分野か)}。分野は <分野>-lab/generated/<実行>/。
+    足す場所は /workspace/hub/sources.json（{"名前": "/workspace からの相対パス"}）。無ければ ComfyUI の出力"""
+    out = {lab.name: (lab / "generated", True) for lab in labs()}
+    extra = read_json(HUB / "sources.json", None)
+    if not isinstance(extra, dict):
+        extra = {"ComfyUI": "apps/ComfyUI/output"}
+    for name, rel in extra.items():
+        d = ROOT / str(rel)
+        if re.fullmatch(r"[\w.-]+", name) and name not in out and inside(d, ROOT) and d.is_dir():
+            out[name] = (d, False)
+    return out
 
 
 def inside(path, base):
@@ -98,30 +118,54 @@ def natural_key(name):
     return [(0, int(t), "") if t.isdigit() else (1, 0, t) for t in re.split(r"(\d+)", name) if t]
 
 
+def media_files(d, recursive=True):
+    for f in sorted(d.rglob("*") if recursive else d.iterdir()):
+        if f.is_file() and f.suffix.lower() in AUDIO | IMAGE:
+            yield f
+
+
 def list_runs():
     runs = []
-    for lab in labs():
-        gen = lab / "generated"
-        if not gen.is_dir():
+    for name, (base, is_lab) in sources().items():
+        if not base.is_dir():
             continue
-        for d in gen.iterdir():
+        for d in base.iterdir():
             if d.is_dir():
                 meta = run_meta(d)
-                runs.append({"lab": lab.name, "run": d.name, "mtime": d.stat().st_mtime,
+                runs.append({"lab": name, "run": d.name, "mtime": d.stat().st_mtime,
                              "title": str(meta.get("title", "")), "note": str(meta.get("note", ""))})
+        if not is_lab and next(media_files(base, recursive=False), None):
+            runs.append({"lab": name, "run": ROOT_RUN, "mtime": base.stat().st_mtime, "title": f"{name}{ROOT_RUN}", "note": ""})
     return sorted(runs, key=lambda r: -r["mtime"])
 
 
 def run_dir(lab, run):
-    d = ROOT / lab / "generated" / run
-    if not re.fullmatch(r"[\w.-]+-lab", lab) or "/" in run or not inside(d, ROOT / lab / "generated") or not d.is_dir():
+    src = sources().get(lab)
+    if not src:
+        raise FileNotFoundError(lab)
+    base, is_lab = src
+    if run == ROOT_RUN and not is_lab:
+        return base
+    d = base / run
+    if "/" in run or run in ("", ".", "..") or not inside(d, base) or not d.is_dir():
         raise FileNotFoundError(run)
     return d
 
 
-def sentences_for(d):
+def fields(items):
+    """評価項目：["自然さ", ...] か [{"key": "natural", "label": "自然さ"}, ...]"""
+    out = []
+    for it in items if isinstance(items, list) else []:
+        if isinstance(it, dict) and it.get("key"):
+            out.append({"key": str(it["key"]), "label": str(it.get("label") or it["key"])})
+        elif isinstance(it, str) and it:
+            out.append({"key": it, "label": it})
+    return out
+
+
+def sentences_for(d, is_lab=True):
     """実行フォルダか、その上の setup/ にある sentences.tsv（タグ・指示・本文）を読む"""
-    for p in [d / "sentences.tsv", d.parent.parent / "setup" / "compare_sentences.tsv"]:
+    for p in [d / "sentences.tsv"] + ([d.parent.parent / "setup" / "compare_sentences.tsv"] if is_lab else []):
         if p.is_file():
             # 音声の名前は「番号_タグ」。同じタグの文が何本もあることがあるので、番号（#1から）でも引けるようにする
             rows, n = {}, 0
@@ -139,17 +183,21 @@ def sentences_for(d):
 
 def run_detail(lab, run):
     d = run_dir(lab, run)
+    is_lab = sources()[lab][1]
     conds = {}
-    for f in sorted(d.rglob("*")):
-        ext = f.suffix.lower()
-        if not f.is_file() or (ext not in AUDIO and ext not in IMAGE):
-            continue
+    for f in media_files(d, recursive=run != ROOT_RUN):
         rel = f.relative_to(d)
         cond = str(rel.parent) if str(rel.parent) != "." else "（直下）"
         conds.setdefault(cond, []).append({
-            "name": f.name, "path": str(rel), "kind": "audio" if ext in AUDIO else "image",
+            "name": f.name, "path": str(rel), "kind": "audio" if f.suffix.lower() in AUDIO else "image",
+            "mtime": f.stat().st_mtime,
         })
     meta = run_meta(d)
+    # 評価項目：実行の hub.json → 分野の setup/hub.json の順。どちらにも無ければ ☆ とメモだけ
+    lab_meta = read_json(ROOT / lab / "setup" / "hub.json", {}) if is_lab else {}
+    lab_meta = lab_meta if isinstance(lab_meta, dict) else {}
+    scores = fields(meta.get("scores", lab_meta.get("scores")))
+    texts = fields(meta.get("texts", lab_meta.get("texts")))
     info = meta.get("conditions") if isinstance(meta.get("conditions"), dict) else {}
     order = {name: i for i, name in enumerate(info)}
     names = sorted(conds, key=lambda c: (order.get(c, len(order)), natural_key(c)))
@@ -159,8 +207,79 @@ def run_detail(lab, run):
         ci = info.get(c) if isinstance(info.get(c), dict) else {}
         conditions.append({"name": c, "label": str(ci.get("label") or c), "note": str(ci.get("note", "")),
                            "files": conds[c]})
-    return {"lab": lab, "run": run, "title": str(meta.get("title", "")), "note": str(meta.get("note", "")),
-            "conditions": conditions, "sentences": sentences_for(d)}
+    title = str(meta.get("title", "")) or (f"{lab}{ROOT_RUN}" if run == ROOT_RUN else "")
+    return {"lab": lab, "run": run, "title": title, "note": str(meta.get("note", "")),
+            "conditions": conditions, "sentences": sentences_for(d, is_lab), "scores": scores, "texts": texts}
+
+
+# PNGに埋め込まれた生成情報（ComfyUI は prompt・workflow、ほかのツールは parameters など）
+
+def png_text(path, limit=4 << 20):
+    out = {}
+    with open(path, "rb") as f:
+        if f.read(8) != b"\x89PNG\r\n\x1a\n":
+            return out
+        while True:
+            head = f.read(8)
+            if len(head) < 8:
+                break
+            size, kind = struct.unpack(">I4s", head)
+            if kind in (b"tEXt", b"zTXt", b"iTXt") and size <= limit:
+                data = f.read(size)
+                key, _, rest = data.partition(b"\0")
+                try:
+                    if kind == b"zTXt":
+                        rest = zlib.decompress(rest[1:])
+                    elif kind == b"iTXt":
+                        flag, rest = rest[0], rest[2:]
+                        rest = rest.split(b"\0", 2)[2]
+                        if flag:
+                            rest = zlib.decompress(rest)
+                    out[key.decode("latin-1")] = rest.decode("utf-8", "replace")
+                except (zlib.error, IndexError):
+                    pass
+                f.seek(4, 1)
+            elif kind == b"IEND":
+                break
+            else:
+                f.seek(size + 4, 1)
+    return out
+
+
+def comfy_summary(prompt):
+    """ComfyUI の prompt（ノードの一覧）から、見比べたい値だけ抜き出す"""
+    try:
+        nodes = json.loads(prompt)
+    except ValueError:
+        return {}
+    out = {"プロンプト": [], "モデル": [], "LoRA": [], "設定": []}
+    for n in nodes.values() if isinstance(nodes, dict) else []:
+        cls, inp = str(n.get("class_type", "")), n.get("inputs") or {}
+        if isinstance(inp.get("text"), str) and "TextEncode" in cls:
+            out["プロンプト"].append(inp["text"])
+        if isinstance(inp.get("ckpt_name"), str):
+            out["モデル"].append(inp["ckpt_name"])
+        if isinstance(inp.get("lora_name"), str):
+            out["LoRA"].append(f'{inp["lora_name"]}（{inp.get("strength_model", "")}）')
+        if "seed" in inp or "noise_seed" in inp:
+            vals = [f"{k}={inp[k]}" for k in ("seed", "noise_seed", "steps", "cfg", "sampler_name", "scheduler", "denoise")
+                    if k in inp and not isinstance(inp[k], list)]
+            out["設定"].append(f"{cls}: " + " ".join(vals))
+    return {k: v for k, v in out.items() if v}
+
+
+def file_meta(lab, run, path):
+    d = run_dir(lab, run)
+    f = d / path
+    if not inside(f, d) or not f.is_file():
+        raise FileNotFoundError(path)
+    texts = png_text(f) if f.suffix.lower() == ".png" else {}
+    summary = comfy_summary(texts["prompt"]) if "prompt" in texts else {}
+    if "parameters" in texts:
+        summary.setdefault("生成情報", [texts["parameters"]])
+    st = f.stat()
+    return {"summary": summary, "raw": {k: v[:20000] for k, v in texts.items()},
+            "size": st.st_size, "mtime": st.st_mtime}
 
 
 # ---------------- Pod ----------------
@@ -338,6 +457,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, list_runs())
             if url.path == "/api/run":
                 return self.send(200, run_detail(q.get("lab", ""), q.get("run", "")))
+            if url.path == "/api/meta":
+                return self.send(200, file_meta(q.get("lab", ""), q.get("run", ""), q.get("path", "")))
             if url.path == "/api/ratings":
                 return self.send(200, read_json(HUB / "ratings.json", {}))
             if url.path == "/api/logs":
