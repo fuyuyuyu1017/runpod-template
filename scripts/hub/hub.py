@@ -38,6 +38,11 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+try:
+    from PIL import Image  # 一覧の縮小画像に使う。無ければ元の画像をそのまま出す
+except ImportError:
+    Image = None
+
 ROOT = Path(os.environ.get("HUB_ROOT", "/workspace"))
 HUB = ROOT / "hub"
 TASKS = Path(os.environ.get("HUB_TASKS") or HUB / "tasks")
@@ -53,6 +58,7 @@ AUDIO = {".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a"}
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 VIDEO = {".mp4", ".m4v", ".webm", ".mov"}
 MEDIA = AUDIO | IMAGE | VIDEO
+THUMB_W = 480  # 一覧に出す縮小画像の幅
 PAGES = {".html", ".htm"}  # 実行フォルダに置いた比較ページ（index.html など）。別タブで開く
 
 
@@ -130,7 +136,9 @@ def run_meta(d):
     """実行フォルダの hub.json（任意）。例：
     {"title": "LoRA ステップ比較", "note": "同じ15文",
      "conditions": {"s1000": {"label": "1000ステップ"}, "final": {"label": "3000ステップ", "note": "最後"}}}
-    conditions に書いた順が並び順になる。書いていない条件は後ろに名前順（数字は数として）で並ぶ。"""
+    conditions に書いた順が並び順になる。書いていない条件は後ろに名前順（数字は数として）で並ぶ。
+    1つのフォルダに条件が混ざっているときは "split" に正規表現を書く。ファイル名（拡張子なし）の
+    (?P<cond>…) を条件、(?P<name>…) を比べる名前にする。例 "^cmp_(?P<cond>.+)_(?P<name>p\\d+_s\\d+)" """
     meta = read_json(d / "hub.json", {})
     return meta if isinstance(meta, dict) else {}
 
@@ -205,16 +213,25 @@ def sentences_for(d, is_lab=True):
 def run_detail(lab, run):
     d = run_dir(lab, run)
     is_lab = sources()[lab][1]
+    meta = run_meta(d)
+    try:
+        split = re.compile(meta["split"]) if isinstance(meta.get("split"), str) else None
+    except re.error:
+        split = None
     conds = {}
     for f in media_files(d, recursive=run != ROOT_RUN):
         rel = f.relative_to(d)
         cond = str(rel.parent) if str(rel.parent) != "." else "（直下）"
+        name = f.name
+        m = split.search(f.stem) if split else None
+        if m and m.groupdict().get("cond"):
+            cond = m.group("cond")
+            name = (m.groupdict().get("name") or f.stem) + f.suffix
         conds.setdefault(cond, []).append({
-            "name": f.name, "path": str(rel), "kind": kind_of(f), "mtime": f.stat().st_mtime, "text": side_text(f),
+            "name": name, "path": rel.as_posix(), "kind": kind_of(f), "mtime": f.stat().st_mtime, "text": side_text(f),
         })
     pages = [f.relative_to(d).as_posix() for f in sorted(d.rglob("*") if run != ROOT_RUN else d.iterdir())
              if f.is_file() and f.suffix.lower() in PAGES][:20]
-    meta = run_meta(d)
     # 評価項目：実行の hub.json → 分野の setup/hub.json の順。どちらにも無ければ ☆ とメモだけ
     lab_meta = read_json(ROOT / lab / "setup" / "hub.json", {}) if is_lab else {}
     lab_meta = lab_meta if isinstance(lab_meta, dict) else {}
@@ -336,6 +353,27 @@ def delete_self():
         res = json.loads(r.read() or b"{}")
     if res.get("errors"):
         raise RuntimeError(res["errors"][0].get("message", "削除できませんでした"))
+
+
+def thumb(f):
+    """一覧用の縮小画像（JPEG）。HUB/thumbs に作り置きする。作れないときは None"""
+    if Image is None or f.suffix.lower() not in IMAGE - {".gif"}:
+        return None
+    st = f.stat()
+    key = hashlib.sha1(f"{f.resolve()}|{st.st_mtime_ns}|{st.st_size}|{THUMB_W}".encode()).hexdigest()
+    t = HUB / "thumbs" / key[:2] / f"{key}.jpg"
+    if not t.is_file():
+        t.parent.mkdir(parents=True, exist_ok=True)
+        tmp = t.with_name(f"{key}.{secrets.token_hex(3)}.tmp")
+        try:
+            with Image.open(f) as im:
+                im.thumbnail((THUMB_W, THUMB_W * 2))
+                im.convert("RGB").save(tmp, "JPEG", quality=82)
+            tmp.replace(t)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            return None
+    return t
 
 
 # ---------------- 確認 ----------------
@@ -500,7 +538,7 @@ class Handler(BaseHTTPRequestHandler):
                 code = (jd / "exit").read_text().strip() if (jd / "exit").is_file() else None
                 return self.send(200, {"lines": lines, "exit": code})
             if url.path.startswith("/media/"):
-                return self.media(urllib.parse.unquote(url.path[len("/media/"):]))
+                return self.media(urllib.parse.unquote(url.path[len("/media/"):]), small="thumb" in q)
             return self.send(404, {"error": "ありません"})
         except FileNotFoundError:
             return self.send(404, {"error": "ありません"})
@@ -555,7 +593,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {"error": str(e)})
         return self.send(404, {"error": "ありません"})
 
-    def media(self, rel):
+    def media(self, rel, small=False):
         parts = rel.split("/", 2)
         if len(parts) != 3:
             raise FileNotFoundError(rel)
@@ -565,6 +603,8 @@ class Handler(BaseHTTPRequestHandler):
         page = f.suffix.lower() in PAGES
         if not inside(f, d) or not f.is_file() or f.suffix.lower() not in MEDIA | PAGES:
             raise FileNotFoundError(rel)
+        if small:  # 一覧用。縮小画像を作れれば、そちらを返す
+            f = thumb(f) or f
         size = f.stat().st_size
         start, end = 0, size - 1
         # iPhoneのSafariは音声をRange指定で読むので、部分応答に対応する
