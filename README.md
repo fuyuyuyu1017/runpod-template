@@ -133,8 +133,8 @@ CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開�
 
 - 探す場所を足す：`/workspace/hub/sources.json` に `{"名前": "/workspace からの相対パス"}` を書く。そのフォルダの下のフォルダが1つの実行になり、直下のファイルは「（直下）」にまとまる。`sources.json` が無いときの既定は `{"ComfyUI": "apps/ComfyUI/output"}`（ComfyUI の出力）。
 
-- 確認：`/workspace/logs/` と `/workspace/*-lab/logs/` のログの末尾、フォルダごとの容量。
-- 作業：`/workspace/hub/tasks/*.sh` をボタンで実行する。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
+- 確認：`/workspace/` 直下・`/workspace/logs/`・`/workspace/*-lab/logs/` のログ（`*.log`）の末尾、フォルダごとの容量。
+- 作業：`/workspace/hub/tasks/` の `*.sh`（bash で実行）と `*.py`（メインページと同じ Python で実行）をボタンで実行する。置き場所は環境変数 `HUB_TASKS` で変えられる（PCで動かすときに使う）。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
 
 ```bash
 # title: 作業の名前

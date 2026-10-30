@@ -436,7 +436,7 @@ async function showTasks(openJob) {
   $("#main").innerHTML = tasks.map(t => `<form class="card" data-task="${esc(t.id)}"><strong>${esc(t.title)}</strong><p class="muted" style="margin:4px 0 8px">${esc(t.desc)}</p>
       ${t.params.map(p => `<label>${esc(p.label)}${p.kind === "textarea" ? `<textarea name="${esc(p.name)}" rows="4"></textarea>` : `<input type="text" name="${esc(p.name)}">`}</label>`).join("")}
       <div class="row" style="margin-top:8px"><button class="btn primary">実行</button><span class="err"></span></div></form>`).join("") +
-    (tasks.length ? "" : `<p class="muted card">作業がありません（/workspace/hub/tasks/*.sh を読みます）</p>`) +
+    (tasks.length ? "" : `<p class="muted card">作業がありません（/workspace/hub/tasks/ の *.sh・*.py を読みます）</p>`) +
     `<div class="card"><strong>実行した作業</strong><table>${jobs.map(j => `<tr><td><a href="#" data-job="${esc(j.id)}">${esc(j.title)}</a></td><td class="mono">${fmtTime(j.started)}</td><td>${j.exit == null ? "実行中" : j.exit === "0" ? "完了" : "失敗（" + esc(j.exit) + "）"}</td></tr>`).join("")}</table>
     <pre id="jobout" hidden></pre></div>`;
   document.querySelectorAll("form[data-task]").forEach(f => f.onsubmit = async e => {

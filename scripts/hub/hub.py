@@ -7,7 +7,8 @@
     条件の並び順・表示名・評価項目に使う。評価項目は <分野>-lab/setup/hub.json で分野ごとの既定も置ける）
   ほかに探す場所（ComfyUIの出力など）は /workspace/hub/sources.json で足せる。PNGの生成情報も読む
 - 確認：ログの末尾、容量の内訳
-- 作業：/workspace/hub/tasks/*.sh を、決めた入力欄だけでボタンから実行する
+- 作業：/workspace/hub/tasks/ の *.sh（bash）と *.py（このPython）を、決めた入力欄だけでボタンから実行する
+  （置き場所は環境変数 HUB_TASKS で変えられる。PCで動かすときに使う）
   （スクリプトの先頭に "# title: 名前" "# desc: 説明" "# param: 変数名 | 表示名 | text か textarea"。
     入力値は環境変数 HUB_<変数名> で渡す）
 
@@ -39,6 +40,8 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("HUB_ROOT", "/workspace"))
 HUB = ROOT / "hub"
+TASKS = Path(os.environ.get("HUB_TASKS") or HUB / "tasks")
+RUNNERS = {".sh": ["bash"], ".py": [sys.executable, "-X", "utf8"]}  # 作業スクリプトの拡張子と実行のしかた
 PORT = int(os.environ.get("HUB_PORT", "8000"))
 PASSWORD = os.environ.get("HUB_PASSWORD") or os.environ.get("FILEBROWSER_PASSWORD") or ""
 if not PASSWORD:
@@ -339,7 +342,7 @@ def delete_self():
 
 def list_logs():
     files = []
-    for base in [ROOT / "logs"] + [lab / "logs" for lab in labs()]:
+    for base in [ROOT, ROOT / "logs"] + [lab / "logs" for lab in labs()]:
         if base.is_dir():
             files += [f for f in base.glob("*.log") if f.is_file()]
     files.sort(key=lambda f: -f.stat().st_mtime)
@@ -366,7 +369,7 @@ def disk_job():
 
 def list_tasks():
     tasks = []
-    for f in sorted((HUB / "tasks").glob("*.sh")):
+    for f in sorted(f for f in TASKS.glob("*") if f.suffix in RUNNERS and f.is_file()):
         t = {"id": f.stem, "title": f.stem, "desc": "", "params": []}
         for line in f.read_text(encoding="utf-8").splitlines()[:30]:
             m = re.match(r"#\s*(title|desc|param):\s*(.*)", line)
@@ -397,11 +400,11 @@ def start_task(task_id, params):
     jd = HUB / "jobs" / job
     jd.mkdir(parents=True)
     write_json(jd / "job.json", {"task": task_id, "title": task["title"], "started": time.time()})
-    script = HUB / "tasks" / f"{task_id}.sh"
+    script = next(TASKS / (task_id + ext) for ext in RUNNERS if (TASKS / (task_id + ext)).is_file())
 
     def run():
         with open(jd / "out.log", "wb") as out:
-            code = subprocess.call(["bash", str(script)], cwd=ROOT, env=env, stdout=out,
+            code = subprocess.call(RUNNERS[script.suffix] + [str(script)], cwd=ROOT, env=env, stdout=out,
                                    stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         (jd / "exit").write_text(str(code))
 
@@ -616,7 +619,7 @@ MAIN_PAGE = (Path(__file__).with_name("hub.html")).read_text(encoding="utf-8")
 
 def main():
     HUB.mkdir(parents=True, exist_ok=True)
-    (HUB / "tasks").mkdir(exist_ok=True)
+    TASKS.mkdir(parents=True, exist_ok=True)
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"[hub] {PORT}番で起動しました", flush=True)
     srv.serve_forever()
