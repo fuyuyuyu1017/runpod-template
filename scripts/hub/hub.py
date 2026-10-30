@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pod内で動くメインページ（8000番）。中身はPodの中だけで扱い、外のサービスには送らない。
 
-- 結果：/workspace/*-lab/generated/<実行>/ の画像・音声を一覧にし、見る・聞く・評価する
+- 結果：/workspace/*-lab/generated/<実行>/ の画像・音声・動画を一覧にし、見る・聞く・評価する
+  （同じ名前の .txt があれば、歌詞や説明として横に出す）
   （評価は /workspace/hub/ratings.json に保存。実行フォルダに hub.json があれば、表示名・説明と
     条件の並び順・表示名・評価項目に使う。評価項目は <分野>-lab/setup/hub.json で分野ごとの既定も置ける）
   ほかに探す場所（ComfyUIの出力など）は /workspace/hub/sources.json で足せる。PNGの生成情報も読む
@@ -45,8 +46,24 @@ if not PASSWORD:
     print(f"[hub] パスワードが未設定のため、今回だけのパスワードを作りました: {PASSWORD}", flush=True)
 SESSION = hmac.new(PASSWORD.encode(), b"hub-session", hashlib.sha256).hexdigest()
 
-AUDIO = {".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".webm"}
+AUDIO = {".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a"}
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+VIDEO = {".mp4", ".m4v", ".webm", ".mov"}
+MEDIA = AUDIO | IMAGE | VIDEO
+
+
+def kind_of(path):
+    ext = path.suffix.lower()
+    return "audio" if ext in AUDIO else "video" if ext in VIDEO else "image"
+
+
+def side_text(f, limit=8000):
+    """同じ名前の .txt（歌詞・プロンプト・説明など）があれば、その中身"""
+    t = f.with_suffix(".txt")
+    try:
+        return t.read_text(encoding="utf-8", errors="replace")[:limit] if t.is_file() else ""
+    except OSError:
+        return ""
 LOCK = threading.Lock()
 DISK = {"running": False, "at": None, "rows": []}
 
@@ -120,7 +137,7 @@ def natural_key(name):
 
 def media_files(d, recursive=True):
     for f in sorted(d.rglob("*") if recursive else d.iterdir()):
-        if f.is_file() and f.suffix.lower() in AUDIO | IMAGE:
+        if f.is_file() and f.suffix.lower() in MEDIA:
             yield f
 
 
@@ -189,8 +206,7 @@ def run_detail(lab, run):
         rel = f.relative_to(d)
         cond = str(rel.parent) if str(rel.parent) != "." else "（直下）"
         conds.setdefault(cond, []).append({
-            "name": f.name, "path": str(rel), "kind": "audio" if f.suffix.lower() in AUDIO else "image",
-            "mtime": f.stat().st_mtime,
+            "name": f.name, "path": str(rel), "kind": kind_of(f), "mtime": f.stat().st_mtime, "text": side_text(f),
         })
     meta = run_meta(d)
     # 評価項目：実行の hub.json → 分野の setup/hub.json の順。どちらにも無ければ ☆ とメモだけ
@@ -540,7 +556,7 @@ class Handler(BaseHTTPRequestHandler):
         lab, run, path = parts
         d = run_dir(lab, run)
         f = d / path
-        if not inside(f, d) or not f.is_file() or f.suffix.lower() not in AUDIO | IMAGE:
+        if not inside(f, d) or not f.is_file() or f.suffix.lower() not in MEDIA:
             raise FileNotFoundError(rel)
         size = f.stat().st_size
         start, end = 0, size - 1
