@@ -2,7 +2,7 @@
 """Pod内で動くメインページ（8000番）。中身はPodの中だけで扱い、外のサービスには送らない。
 
 - 結果：/workspace/*-lab/generated/<実行>/ の画像・音声・動画を一覧にし、見る・聞く・評価する
-  （同じ名前の .txt があれば、歌詞や説明として横に出す）
+  （同じ名前の .txt があれば、歌詞や説明として横に出す。.html は「ページ」として別タブで開ける）
   （評価は /workspace/hub/ratings.json に保存。実行フォルダに hub.json があれば、表示名・説明と
     条件の並び順・表示名・評価項目に使う。評価項目は <分野>-lab/setup/hub.json で分野ごとの既定も置ける）
   ほかに探す場所（ComfyUIの出力など）は /workspace/hub/sources.json で足せる。PNGの生成情報も読む
@@ -50,6 +50,7 @@ AUDIO = {".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a"}
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 VIDEO = {".mp4", ".m4v", ".webm", ".mov"}
 MEDIA = AUDIO | IMAGE | VIDEO
+PAGES = {".html", ".htm"}  # 実行フォルダに置いた比較ページ（index.html など）。別タブで開く
 
 
 def kind_of(path):
@@ -208,6 +209,8 @@ def run_detail(lab, run):
         conds.setdefault(cond, []).append({
             "name": f.name, "path": str(rel), "kind": kind_of(f), "mtime": f.stat().st_mtime, "text": side_text(f),
         })
+    pages = [f.relative_to(d).as_posix() for f in sorted(d.rglob("*") if run != ROOT_RUN else d.iterdir())
+             if f.is_file() and f.suffix.lower() in PAGES][:20]
     meta = run_meta(d)
     # 評価項目：実行の hub.json → 分野の setup/hub.json の順。どちらにも無ければ ☆ とメモだけ
     lab_meta = read_json(ROOT / lab / "setup" / "hub.json", {}) if is_lab else {}
@@ -225,7 +228,7 @@ def run_detail(lab, run):
                            "files": conds[c]})
     title = str(meta.get("title", "")) or (f"{lab}{ROOT_RUN}" if run == ROOT_RUN else "")
     return {"lab": lab, "run": run, "title": title, "note": str(meta.get("note", "")),
-            "conditions": conditions, "sentences": sentences_for(d, is_lab), "scores": scores, "texts": texts}
+            "conditions": conditions, "pages": pages, "sentences": sentences_for(d, is_lab), "scores": scores, "texts": texts}
 
 
 # PNGに埋め込まれた生成情報（ComfyUI は prompt・workflow、ほかのツールは parameters など）
@@ -556,7 +559,8 @@ class Handler(BaseHTTPRequestHandler):
         lab, run, path = parts
         d = run_dir(lab, run)
         f = d / path
-        if not inside(f, d) or not f.is_file() or f.suffix.lower() not in MEDIA:
+        page = f.suffix.lower() in PAGES
+        if not inside(f, d) or not f.is_file() or f.suffix.lower() not in MEDIA | PAGES:
             raise FileNotFoundError(rel)
         size = f.stat().st_size
         start, end = 0, size - 1
@@ -577,6 +581,8 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Cache-Control", "private, max-age=3600")
+        if page:  # ページは同じフォルダの画像・音声だけ読める。メインページのAPIは呼べないようにする
+            self.send_header("Content-Security-Policy", "connect-src 'none'; form-action 'none'")
         self.end_headers()
         if self.command == "HEAD":
             return
