@@ -84,14 +84,14 @@ else
   echo "[start] ComfyUI: 未インストール。bash /opt/runpod-template/scripts/install-comfyui.sh で入れられます"
 fi
 
-# --- メインページ（8000番。CPUのPodで開く。結果の試聴・評価、ログ、決めた作業の実行） ---
+# --- AILab ハブ（8000番。CPUのPodで開く。結果の試聴・評価、ログ、決めた作業の実行） ---
 # 本体は別のリポジトリ ailab-hub。Network Volume の /workspace/hub/app/ に送ったものを起動する
 HUB_APP=/workspace/hub/app/hub.py
 if [[ -f "$HUB_APP" ]]; then
   nohup /usr/bin/python3.12 "$HUB_APP" >> "$LOG_DIR/hub.log" 2>&1 &
-  echo "[start] メインページ: 起動（ログ: $LOG_DIR/hub.log）"
+  echo "[start] AILab ハブ: 起動（ログ: $LOG_DIR/hub.log）"
 else
-  echo "[start] メインページ: $HUB_APP がありません（ailab-hub の README の手順で送る）"
+  echo "[start] AILab ハブ: $HUB_APP がありません（ailab-hub の README の手順で送る）"
 fi
 
 # --- tools/podctl.py の exec 用ランナー ---

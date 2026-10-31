@@ -5,7 +5,7 @@
   python3 tools/podctl.py status                     アカウントの全Podを表示
   python3 tools/podctl.py start [--gpu 名前 ...]     Podを作り、JupyterLabが応答するまで待つ
                                                      GPUが空いていなければ、空くまで待つ（--wait-gpu 分、既定30）
-  python3 tools/podctl.py start --cpu                GPUなしの安いPodを作る（メインページ・ファイルの確認用）
+  python3 tools/podctl.py start --cpu                GPUなしの安いPodを作る（AILab ハブ・ファイルの確認用）
                                                      exec / upload / download / stop も --cpu でこのPodを扱う
   python3 tools/podctl.py exec 'コマンド' [--timeout 秒]
                                                      Pod内のbashでコマンドを実行し、出力と終了コードを返す
@@ -52,7 +52,7 @@ CPU_VCPUS = 2
 # CPUの種類（先頭から順に空きのあるものが使われる）。cpu3c は特定のマシンで外からつながらない不具合があったので
 # 後回しにし、ほぼ同じ料金（2 vCPUで$0.06〜0.07/時）の別の種類を先に試す
 CPU_FLAVORS = os.environ.get("RUNPOD_CPU_FLAVORS", "cpu5c,cpu3g,cpu5g,cpu3c").split(",")
-# CPUのPodで開くポート（メインページ、ファイルブラウザ、JupyterLab、追加のWebアプリ用の3000番）。
+# CPUのPodで開くポート（AILab ハブ、ファイルブラウザ、JupyterLab、追加のWebアプリ用の3000番）。
 # ComfyUIは動かさない。3000番で何を動かすかはVolumeの /workspace/startup.d 側で決める
 CPU_PORTS = ["8000/http", "8080/http", "8888/http", "3000/http"]
 JUPYTER_PORT = 8888
@@ -169,7 +169,7 @@ def cmd_start(args):
             if r.status_code == 200:
                 print(f"準備完了: {jupyter_base(p)}")
                 if args.cpu:
-                    print(f"メインページ: https://{p['id']}-8000.proxy.runpod.net")
+                    print(f"AILab ハブ: https://{p['id']}-8000.proxy.runpod.net")
                     print(f"3000番: https://{p['id']}-3000.proxy.runpod.net")
                 return
             if r.status_code == 403:
@@ -302,7 +302,7 @@ def main():
     s = sub.add_parser("start")
     g = s.add_mutually_exclusive_group()
     g.add_argument("--gpu", nargs="+", help="GPUの種類（先頭から順に試す）")
-    g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（メインページ・ファイルの確認用）")
+    g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（AILab ハブ・ファイルの確認用）")
     s.add_argument("--wait", type=int, default=10, help="JupyterLabの応答を待つ分数")
     s.add_argument("--wait-gpu", type=int, default=30, help="空きが無いとき、空くまで待つ分数（0なら待たない）")
     e = sub.add_parser("exec")

@@ -20,7 +20,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 2. JupyterLabを起動（パスワードは環境変数 `JUPYTER_PASSWORD`。未設定ならランダムに作ってログに出す）
 3. ファイルブラウザを起動（初回だけユーザー `admin` を作る。パスワードは `FILEBROWSER_PASSWORD`、未設定ならランダムに作ってログに出す）
 4. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを8188番で起動（CPUのPodでは起動しない）
-5. メインページを8000番で起動（下の「メインページ」）
+5. AILab ハブを8000番で起動（下の「AILab ハブ」）
 6. `/workspace/startup.d/*.sh` があれば順に実行
 
 ログは `/workspace/logs/` に保存されます。
@@ -88,7 +88,7 @@ Claude Code on the web などのクラウド環境から、Podの作成・コマ
 ```bash
 python3 tools/podctl.py status
 python3 tools/podctl.py start          # 既にあれば作らない。JupyterLabが応答するまで待つ
-python3 tools/podctl.py start --cpu    # GPUなしの安いPod（$0.06〜0.07/時ほど）。メインページ・ファイルの確認用
+python3 tools/podctl.py start --cpu    # GPUなしの安いPod（$0.06〜0.07/時ほど）。AILab ハブ・ファイルの確認用
 python3 tools/podctl.py exec 'nvidia-smi'
 python3 tools/podctl.py upload ./train.sh voice-lab/setup/train.sh   # 送り先のフォルダは自動で作る
 python3 tools/podctl.py download voice-lab/generated/out.wav ./out.wav
@@ -106,10 +106,10 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
 - `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<Pod ID>/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
-- `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはメインページ（8000）・ファイルブラウザ（8080）・JupyterLab（8888）・追加のWebアプリ用（3000。何を動かすかはVolumeの `/workspace/startup.d` 側で決める）で、GPUを使う処理（学習や生成）はできません。
+- `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはAILab ハブ（8000）・ファイルブラウザ（8080）・JupyterLab（8888）・追加のWebアプリ用（3000。何を動かすかはVolumeの `/workspace/startup.d` 側で決める）で、GPUを使う処理（学習や生成）はできません。
 - GPUは既定で RTX 4090 だけを使います。空いていないときは別のGPUにせず、1分ごとに試して空くまで待ちます（`--wait-gpu 分`、既定30分）。別のGPUは `--gpu "NVIDIA RTX A5000"` のように指定したときだけ使い、指定は空きのあるものが先頭から使われます。
 
-## メインページ
+## AILab ハブ
 
 CPUのPodの8000番で開くページ（結果の試聴・評価、ログ、決めた作業の実行）。本体は別のリポジトリ [ailab-hub](https://github.com/fuyuyuyu1017/ailab-hub) に移した（2026-10-31）。`start.sh` は Network Volume の `/workspace/hub/app/hub.py` があれば起動する。送り方・機能は ailab-hub の README。
 
