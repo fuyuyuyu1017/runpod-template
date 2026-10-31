@@ -9,6 +9,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 - git、ffmpeg、sox、ビルドツール、SSH
 - rclone（外部ストレージへのバックアップ用）
 - JupyterLab（8888番）
+- nginx（ComfyUI の前に置くパスワード付きの入口）
 - 起動スクリプト `start.sh`
 
 ファイルブラウザ（File Browser、8080番）は 2026-10-31 に外しました（2026-09-01 に開発が終わり、修正が出ないため）。ファイルの上げ下ろしは JupyterLab か `podctl upload`／`download`、PCへは S3 で取ります。Volume に残る `/workspace/.filebrowser/` は使われません。
@@ -19,7 +20,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 
 1. RunPodに公開鍵が設定されていればSSHを起動
 2. JupyterLabを起動（パスワードは環境変数 `JUPYTER_PASSWORD`。未設定ならランダムに作ってログに出す）
-3. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを8188番で起動（CPUのPodでは起動しない）
+3. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを起動（CPUのPodでは起動しない。下の「ComfyUI の入口」）
 4. AILab ハブを8000番で起動（下の「AILab ハブ」）
 5. `/workspace/startup.d/*.sh` があれば順に実行
 
@@ -34,7 +35,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 | Volume Mount Path | `/workspace` |
 | HTTP Ports | `8188, 8888` |
 | TCP Ports | `22` |
-| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（AILab ハブのパスワード。`HUB_PASSWORD` が無いときに使う）。下の「外部サービスのトークン」も参照 |
+| Environment Variables | `JUPYTER_PASSWORD`（ComfyUI の入口も、`COMFYUI_PASSWORD` が無いときはこの値）、`FILEBROWSER_PASSWORD`（AILab ハブのパスワード。`HUB_PASSWORD` が無いときに使う）。下の「外部サービスのトークン」も参照 |
 
 ## 外部サービスのトークン
 
@@ -70,6 +71,16 @@ rclone copy <フォルダ> "offsite:$OFFSITE_BUCKET/<保存先>"  # 追加・更
 
 - `rclone sync` は送り先のファイルを消すことがあるため、バックアップには `copy` を使う。
 - B2 のキーはバックアップ用のバケット1つだけに限定して作る。
+
+## ComfyUI の入口（パスワード付き）
+
+ComfyUI は認証の仕組みを持たないので、本体は Pod の中（`127.0.0.1:8189`）だけで待ち受け、外からは nginx の入口（8188番）を通したときだけ開けます（2026-10-31〜）。
+
+- 開くと、ユーザー名とパスワードを聞かれる。ユーザー名は `ailab`（`COMFYUI_USER` で変更可）、パスワードは `COMFYUI_PASSWORD`、無ければ `JUPYTER_PASSWORD` と同じ値。
+- どちらも未設定なら入口を作らず、外からは開けないままにする（パスワードを作ってログに出すことはしない）。
+- Pod の中のスクリプトからは、パスワードなしで `http://127.0.0.1:8189` を使う（例：`curl localhost:8189/object_info/CLIPLoader`）。
+- 手で起動し直すときは `bash /opt/runpod-template/scripts/start-comfyui.sh`（動いていれば何もしない。`--cpu` で CPU の Pod でも確認できる）。
+- パスワードのハッシュは Pod の中（`/run/comfyui-gate/`）に置き、Volume には置かない。入口のログは `/workspace/logs/comfyui-gate.log`。
 
 ## ComfyUIのインストール（初回だけ）
 

@@ -43,18 +43,11 @@ nohup /opt/jupyter/bin/jupyter lab \
 echo "[start] JupyterLab: 起動（ログ: $LOG_DIR/jupyter.log）"
 
 # --- ComfyUI（8188番）。Volume上にインストール済みで、GPUがあるときだけ ---
+# 本体は Pod の中だけで待ち受け、外からはパスワード付きの入口を通す（scripts/start-comfyui.sh）
 if ! nvidia-smi -L >/dev/null 2>&1; then
   echo "[start] ComfyUI: GPUが無いPod（CPUのPod）なので起動しません"
-elif [[ -x "$COMFY_DIR/.venv/bin/python" ]]; then
-  (
-    cd "$COMFY_DIR" || exit 1
-    # --enable-cors-header: RunPodの中継経由のアクセスを、ComfyUIの送信元チェックで403にしないため
-    nohup env -u LD_LIBRARY_PATH .venv/bin/python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header \
-      >> "$LOG_DIR/comfyui.log" 2>&1 &
-  )
-  echo "[start] ComfyUI: 起動（ログ: $LOG_DIR/comfyui.log）"
 else
-  echo "[start] ComfyUI: 未インストール。bash /opt/runpod-template/scripts/install-comfyui.sh で入れられます"
+  bash /opt/runpod-template/scripts/start-comfyui.sh
 fi
 
 # --- AILab ハブ（8000番。CPUのPodで開く。結果の試聴・評価、ログ、決めた作業の実行） ---
