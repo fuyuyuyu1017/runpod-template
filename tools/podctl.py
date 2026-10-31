@@ -52,9 +52,9 @@ CPU_VCPUS = 2
 # CPUの種類（先頭から順に空きのあるものが使われる）。cpu3c は特定のマシンで外からつながらない不具合があったので
 # 後回しにし、ほぼ同じ料金（2 vCPUで$0.06〜0.07/時）の別の種類を先に試す
 CPU_FLAVORS = os.environ.get("RUNPOD_CPU_FLAVORS", "cpu5c,cpu3g,cpu5g,cpu3c").split(",")
-# CPUのPodで開くポート（AILab ハブ、ファイルブラウザ、JupyterLab、追加のWebアプリ用の3000番）。
+# CPUのPodで開くポート（AILab ハブ、JupyterLab、追加のWebアプリ用の3000番）。
 # ComfyUIは動かさない。3000番で何を動かすかはVolumeの /workspace/startup.d 側で決める
-CPU_PORTS = ["8000/http", "8080/http", "8888/http", "3000/http"]
+CPU_PORTS = ["8000/http", "8888/http", "3000/http"]
 JUPYTER_PORT = 8888
 
 

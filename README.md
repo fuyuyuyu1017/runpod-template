@@ -9,8 +9,9 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 - git、ffmpeg、sox、ビルドツール、SSH
 - rclone（外部ストレージへのバックアップ用）
 - JupyterLab（8888番）
-- ファイルブラウザ（8080番）
 - 起動スクリプト `start.sh`
+
+ファイルブラウザ（File Browser、8080番）は 2026-10-31 に外しました（2026-09-01 に開発が終わり、修正が出ないため）。ファイルの上げ下ろしは JupyterLab か `podctl upload`／`download`、PCへは S3 で取ります。Volume に残る `/workspace/.filebrowser/` は使われません。
 
 `main` ブランチに変更が入ると、GitHub Actionsがイメージをビルドして `ghcr.io/fuyuyuyu1017/runpod-template:latest` に置きます。
 
@@ -18,10 +19,9 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 
 1. RunPodに公開鍵が設定されていればSSHを起動
 2. JupyterLabを起動（パスワードは環境変数 `JUPYTER_PASSWORD`。未設定ならランダムに作ってログに出す）
-3. ファイルブラウザを起動（初回だけユーザー `admin` を作る。パスワードは `FILEBROWSER_PASSWORD`、未設定ならランダムに作ってログに出す）
-4. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを8188番で起動（CPUのPodでは起動しない）
-5. AILab ハブを8000番で起動（下の「AILab ハブ」）
-6. `/workspace/startup.d/*.sh` があれば順に実行
+3. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを8188番で起動（CPUのPodでは起動しない）
+4. AILab ハブを8000番で起動（下の「AILab ハブ」）
+5. `/workspace/startup.d/*.sh` があれば順に実行
 
 ログは `/workspace/logs/` に保存されます。
 
@@ -32,9 +32,9 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 | Container Image | `ghcr.io/fuyuyuyu1017/runpod-template:latest` |
 | Container Disk | 20 GB |
 | Volume Mount Path | `/workspace` |
-| HTTP Ports | `8188, 8888, 8080` |
+| HTTP Ports | `8188, 8888` |
 | TCP Ports | `22` |
-| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（任意。ファイルブラウザは12文字以上が必須）。下の「外部サービスのトークン」も参照 |
+| Environment Variables | `JUPYTER_PASSWORD`、`FILEBROWSER_PASSWORD`（AILab ハブのパスワード。`HUB_PASSWORD` が無いときに使う）。下の「外部サービスのトークン」も参照 |
 
 ## 外部サービスのトークン
 
@@ -106,7 +106,7 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
 - `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<Pod ID>/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
-- `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはAILab ハブ（8000）・ファイルブラウザ（8080）・JupyterLab（8888）・追加のWebアプリ用（3000。何を動かすかはVolumeの `/workspace/startup.d` 側で決める）で、GPUを使う処理（学習や生成）はできません。
+- `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはAILab ハブ（8000）・JupyterLab（8888）・追加のWebアプリ用（3000。何を動かすかはVolumeの `/workspace/startup.d` 側で決める）で、GPUを使う処理（学習や生成）はできません。
 - GPUは既定で RTX 4090 だけを使います。空いていないときは別のGPUにせず、1分ごとに試して空くまで待ちます（`--wait-gpu 分`、既定30分）。別のGPUは `--gpu "NVIDIA RTX A5000"` のように指定したときだけ使い、指定は空きのあるものが先頭から使われます。
 
 ## AILab ハブ

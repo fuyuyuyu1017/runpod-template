@@ -22,9 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3.12 -m venv /opt/jupyter \
     && /opt/jupyter/bin/pip install "jupyterlab>=4,<5"
 
-# ファイルブラウザ
-RUN curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
-
 COPY start.sh /start.sh
 COPY scripts/ /opt/runpod-template/scripts/
 RUN chmod +x /start.sh /opt/runpod-template/scripts/*.sh
