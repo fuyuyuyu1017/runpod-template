@@ -85,8 +85,14 @@ else
 fi
 
 # --- メインページ（8000番。CPUのPodで開く。結果の試聴・評価、ログ、決めた作業の実行） ---
-nohup /usr/bin/python3.12 /opt/runpod-template/scripts/hub/hub.py >> "$LOG_DIR/hub.log" 2>&1 &
-echo "[start] メインページ: 起動（ログ: $LOG_DIR/hub.log）"
+# 本体は別のリポジトリ ailab-hub。Network Volume の /workspace/hub/app/ に送ったものを起動する
+HUB_APP=/workspace/hub/app/hub.py
+if [[ -f "$HUB_APP" ]]; then
+  nohup /usr/bin/python3.12 "$HUB_APP" >> "$LOG_DIR/hub.log" 2>&1 &
+  echo "[start] メインページ: 起動（ログ: $LOG_DIR/hub.log）"
+else
+  echo "[start] メインページ: $HUB_APP がありません（ailab-hub の README の手順で送る）"
+fi
 
 # --- tools/podctl.py の exec 用ランナー ---
 nohup bash /opt/runpod-template/scripts/podctl-runner.sh >> "$LOG_DIR/podctl-runner.log" 2>&1 &
