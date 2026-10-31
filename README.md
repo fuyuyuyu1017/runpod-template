@@ -109,40 +109,8 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 - `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはメインページ（8000）・ファイルブラウザ（8080）・JupyterLab（8888）・追加のWebアプリ用（3000。何を動かすかはVolumeの `/workspace/startup.d` 側で決める）で、GPUを使う処理（学習や生成）はできません。
 - GPUは既定で RTX 4090 だけを使います。空いていないときは別のGPUにせず、1分ごとに試して空くまで待ちます（`--wait-gpu 分`、既定30分）。別のGPUは `--gpu "NVIDIA RTX A5000"` のように指定したときだけ使い、指定は空きのあるものが先頭から使われます。
 
-## メインページ（scripts/hub/）
+## メインページ
 
-CPUのPod（`podctl start --cpu`、PCからは `runpod.ps1 start -Cpu`）で開く、Pod内だけで動くページです。中身はPodの外に送りません。パスワードはファイルブラウザと同じ（`FILEBROWSER_PASSWORD`。`HUB_PASSWORD` があればそちら）。
-
-- 結果：`/workspace/*-lab/generated/<実行>/` の音声・画像・動画（mp4・webm・mov）を一覧にし、3つの見方で見る。☆と評価は `/workspace/hub/ratings.json` に保存。文の本文は、実行フォルダの `sentences.tsv` か `<分野>-lab/setup/compare_sentences.tsv`（タグ・指示・本文のタブ区切り）があれば表示する。
-  - ファイルごとに比べる：同じ名前のファイルを条件ごとに縦に並べる。
-  - 格子で並べる：行＝ファイル、列＝条件の表。
-  - 条件ごとに見る・評価する：1つの条件を並べ方（名前・新しい順・古い順・☆を先に）と「☆だけ」で絞って見て、条件に評価を付ける。
-  - 画像は押すと拡大し、←→で前後へ動く。PNGに埋め込まれた生成情報（ComfyUI のプロンプト・モデル・LoRA・seed など）を横に出す。「比」で2枚を選ぶと、並べるか、重ねて境目を動かして比べられる。
-  - 動画も「比」で2本を選べる。並べても重ねても、2本は一緒に再生・停止し、位置はAに合わせる（音はAだけ）。
-  - 30秒以上の音声・動画には「区間くり返し」が出る。再生中にA点・B点を押すと、その間をくり返す（曲のサビの聞き比べなど）。
-  - メディアと同じ名前の `.txt`（例：`001_song.mp3` と `001_song.txt`）があれば、歌詞や説明として「テキスト」に出す。
-  - 実行フォルダに `.html`（比較用に作った `index.html` など）があれば、上に「ページ」として出し、別タブで開ける。ページの中で画像・音声・動画は表示できるが、メインページのAPIは呼べない（`connect-src 'none'`）。
-  - 件数が多いときは60件ずつ（画像は20件ずつ）出す。一覧の画像は、Pillow が使える環境では幅480pxの縮小画像（`/workspace/hub/thumbs/` に作り置き）を出し、拡大・比較では元の画像を出す。Pillow が無ければ元の画像のまま。
-  - 1つのフォルダに条件が混ざっているときは、実行の `hub.json` に `"split"` を書くと、ファイル名から条件と比べる名前を分けられる。例：`"split": "^cmp_(?P<cond>.+)_(?P<name>p\\d+_s\\d+)"`（`cmp_illustrious_p01_s11_00001_.png` → 条件 `illustrious`・名前 `p01_s11.png`）。
-- 実行フォルダに `hub.json` を置くと、一覧の表示名・説明と、条件の並び順・表示名・評価項目を決められる（無ければ名前順。数字は数として並ぶ）。実験スクリプトが生成のときに書く。評価項目（`scores` は1〜5、`texts` は自由記入）は、分野ごとの既定を `<分野>-lab/setup/hub.json` に置ける。どちらにも無ければ ☆ とメモだけ。
-
-```json
-{"title": "LoRA ステップ比較", "note": "同じ15文・同じ乱数",
- "conditions": {"s1000": {"label": "1000ステップ"}, "final": {"label": "3000ステップ", "note": "最後の保存"}},
- "scores": [{"key": "natural", "label": "自然さ"}], "texts": ["気づいたこと"]}
-```
-
-- 探す場所を足す：`/workspace/hub/sources.json` に `{"名前": "/workspace からの相対パス"}` を書く。そのフォルダの下のフォルダが1つの実行になり、直下のファイルは「（直下）」にまとまる。`sources.json` が無いときの既定は `{"ComfyUI": "apps/ComfyUI/output"}`（ComfyUI の出力）。
-
-- 確認：`/workspace/` 直下・`/workspace/logs/`・`/workspace/*-lab/logs/` のログ（`*.log`）の末尾、フォルダごとの容量。
-- 作業：`/workspace/hub/tasks/` の `*.sh`（bash で実行）と `*.py`（メインページと同じ Python で実行）をボタンで実行する。置き場所は環境変数 `HUB_TASKS` で変えられる（PCで動かすときに使う）。スクリプトの先頭に次のように書くと入力欄ができ、値は環境変数 `HUB_<変数名>` で渡る。出力は `/workspace/hub/jobs/<id>/`。
-
-```bash
-# title: 作業の名前
-# desc: 説明
-# param: URLS | URL（1行に1つ） | textarea
-```
-
-- ヘッダー：ファイルブラウザ・JupyterLab と、3000番で何か動いていればそのリンク。CPUのPodでは「Podを削除」ボタンも出る（確認つき。RunPodがPodに渡す `RUNPOD_API_KEY` で自分だけを削除する。Network Volume は残る）。PCで動かすとき（`RUNPOD_POD_ID` が無いとき）は出ない。
+CPUのPodの8000番で開くページ（結果の試聴・評価、ログ、決めた作業の実行）。本体は別のリポジトリ [ailab-hub](https://github.com/fuyuyuyu1017/ailab-hub) に移した（2026-10-31）。`start.sh` は Network Volume の `/workspace/hub/app/hub.py` があれば起動する。送り方・機能は ailab-hub の README。
 
 GPUのPodでも動いていますが、テンプレートのポートに8000番が無いので外からは開けません。

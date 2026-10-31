@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check shell scripts
-        run: bash -n start.sh && for f in scripts/*.sh; do bash -n "$f"; done && python3 -m py_compile scripts/hub/hub.py
+        run: bash -n start.sh && for f in scripts/*.sh; do bash -n "$f"; done
 
       - uses: docker/setup-buildx-action@v3
 
