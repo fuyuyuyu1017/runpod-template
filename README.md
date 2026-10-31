@@ -19,7 +19,7 @@ RunPod用の自作テンプレートです。イメージは軽くして、Comfy
 ## 起動時の動き（start.sh）
 
 1. RunPodに公開鍵が設定されていればSSHを起動
-2. JupyterLabを起動（パスワードは環境変数 `JUPYTER_PASSWORD`。未設定ならランダムに作ってログに出す）
+2. JupyterLabを起動（パスワードは環境変数 `JUPYTER_PASSWORD`。未設定ならランダムな値で鍵をかけ、値はログに出さない。その場合は誰も入れないので、設定してから作り直す）
 3. `/workspace/apps/ComfyUI` があり、GPUがあればComfyUIを起動（CPUのPodでは起動しない。下の「ComfyUI の入口」）
 4. AILab ハブを8000番で起動（下の「AILab ハブ」）
 5. `/workspace/startup.d/*.sh` があれば順に実行
