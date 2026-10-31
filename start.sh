@@ -31,7 +31,8 @@ fi
 JUPYTER_TOKEN="${JUPYTER_PASSWORD:-}"
 if [[ -z "$JUPYTER_TOKEN" ]]; then
   JUPYTER_TOKEN="$(random_password)"
-  echo "[start] JUPYTER_PASSWORD が未設定のため、今回だけのトークンを作りました: $JUPYTER_TOKEN"
+  # 値はログに出さない（/workspace/logs は Volume に残る）。ランダムな値で鍵をかけるので、誰も入れない
+  echo "[start] JUPYTER_PASSWORD が未設定です。RunPod のテンプレートか環境変数に設定してください（今回は誰も入れない状態で起動します）"
 fi
 nohup /opt/jupyter/bin/jupyter lab \
   --allow-root --no-browser --ip=0.0.0.0 --port=8888 \
