@@ -118,7 +118,7 @@ JupyterLabのパスワードは、RunPodのテンプレートの環境変数 `JU
 - Pod名は `runpod.ps1` と同じ（`ComfyUI-session-auto`）なので、PCとクラウドのどちらからでも同じPodを扱えます。
 - `exec` は既定で600秒で打ち切ります（Pod内のコマンドは動き続け、出力は `/workspace/logs/podctl/<Pod ID>/<id>/out.log` に残る）。学習など長い処理は `nohup ... > /workspace/logs/xxx.log 2>&1 &` で起動し、ログを見ます。
 - `--cpu` のPodは 2 vCPU・メモリ4GBで、CPUの種類は cpu5c → cpu3g → cpu5g → cpu3c の順に空いているものを使います（cpu3c は外からつながらないマシンに当たったことがあるので最後。`RUNPOD_CPU_FLAVORS` で変更可）。名前が別（`Hub-cpu-auto`）なのでGPUのPodと同時に動かせます。`exec`・`upload`・`download`・`stop` も `--cpu` を付けるとこのPodを扱います。開くポートはAILab ハブ（8000）・JupyterLab（8888）・追加のWebアプリ用（3000。何を動かすかはVolumeの `/workspace/startup.d` 側で決める）で、GPUを使う処理（学習や生成）はできません。
-- GPUは既定で RTX 4090 だけを使います。空いていないときは別のGPUにせず、1分ごとに試して空くまで待ちます（`--wait-gpu 分`、既定30分）。別のGPUは `--gpu "NVIDIA RTX A5000"` のように指定したときだけ使い、指定は空きのあるものが先頭から使われます。
+- GPUは既定で RTX 4090 だけを使います。空いていないときは別のGPUにせず、1分ごとに試して空くまで待ちます（`--wait-gpu 分`、既定30分）。別のGPUは `--gpu "NVIDIA RTX A5000" --allow-other-gpu` のように、Yuhei が認めたときだけ使います（`--allow-other-gpu` が無いと止まります）。指定は空きのあるものが先頭から使われます。
 
 ## AILab ハブ
 
