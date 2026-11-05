@@ -8,6 +8,7 @@
 - `/workspace` 内の削除は、対象とサイズを示してユーザーの了承を得てから行う。
 - ComfyUI関連（`/workspace/apps/ComfyUI`、`/workspace/runpod-slim`）：本体の更新はしない（`install-comfyui.sh` を再実行しない）。カスタムノードの追加・更新は毎回事前にユーザーの了承を取り、入れる前に `custom_nodes` とPython環境（`.venv`）の控えを取る。手順はライブラリの `docs/03_RunPod環境.md` 第3部。
 - Network Volumeは確保したサイズで課金され、縮小できない。容量を広げる前にユーザーに相談する。
+- 開発の決まりは base-library の `docs/common/dev.md`（PC のパスを直書きしない。Pod の `/workspace` はテンプレートが決めた場所なので書いてよいが、1か所の定数にする）。
 - ファイルの置き場所はプロジェクトライブラリの `docs/02_ファイル配置.md` に従う。要点：文書と実験スクリプトの正本はライブラリ（`docs/`、`<分野>-lab/<テーマ>/`）。Podの `/workspace/<分野>-lab/setup/` はそこから `upload` したコピーで、Pod上では直さない。
 - このリポジトリには **Podテンプレートそのもの**（イメージの定義、`start.sh`、イメージに入る `scripts/`（AILab ハブは除く。`ailab-hub` に分けた）、Podを操作する `tools/podctl.py`、CI、説明）だけを置く。`main` に入るたびにイメージが作り直される。
   - 置く判定：①テンプレートのイメージ・起動・Podの操作のどれかに必要で、かつ ②特定の分野・テーマ・モデルの名前（`voice-lab` など）を中に書いていないもの。迷ったらライブラリに置く。
