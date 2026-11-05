@@ -48,6 +48,8 @@ CPU_POD_NAME = os.environ.get("RUNPOD_CPU_POD_NAME", "Hub-cpu-auto")
 # 先頭から順に空きのあるものが使われる。費用と環境の互換性から、普段は RTX 4090 だけに限る
 # （空いていなければ別のGPUにせず待つ。ユーザーと決めたルール）
 GPU_TYPES = os.environ.get("RUNPOD_GPU_TYPES", "NVIDIA GeForce RTX 4090").split(",")
+# これ以外の GPU は、Yuhei が認めたときだけ --allow-other-gpu を付けて使う（CLAUDE.md）
+ALLOWED_GPUS = {"NVIDIA GeForce RTX 4090"}
 CPU_VCPUS = 2
 # CPUの種類（先頭から順に空きのあるものが使われる）。cpu3c は特定のマシンで外からつながらない不具合があったので
 # 後回しにし、ほぼ同じ料金（2 vCPUで$0.06〜0.07/時）の別の種類を先に試す
@@ -145,7 +147,12 @@ def cmd_start(args):
             # 2 vCPU・メモリ4GB。ファイルの確認や取り出し、軽いコマンド向け
             body.update({"computeType": "CPU", "vcpuCount": CPU_VCPUS, "ports": CPU_PORTS, "cpuFlavorIds": CPU_FLAVORS})
         else:
-            body.update({"gpuTypeIds": args.gpu or GPU_TYPES, "gpuCount": 1})
+            gpus = args.gpu or GPU_TYPES
+            other = [g for g in gpus if g not in ALLOWED_GPUS]
+            if other and not args.allow_other_gpu:
+                die(f"RTX 4090 以外の GPU（{'・'.join(other)}）は使いません。空くまで待つのが決まりです。"
+                    "Yuhei が認めたときだけ --allow-other-gpu を付けてください")
+            body.update({"gpuTypeIds": gpus, "gpuCount": 1})
         # 決めたGPUだけを使い、空いていなければ別のGPUにせず、空くまで待つ
         give_up = time.time() + args.wait_gpu * 60
         while True:
@@ -304,6 +311,7 @@ def main():
     g.add_argument("--gpu", nargs="+", help="GPUの種類（先頭から順に試す）")
     g.add_argument("--cpu", action="store_true", help="GPUなしの安いPodにする（AILab ハブ・ファイルの確認用）")
     s.add_argument("--wait", type=int, default=10, help="JupyterLabの応答を待つ分数")
+    s.add_argument("--allow-other-gpu", action="store_true", help="RTX 4090 以外の GPU を使う（Yuhei が認めたときだけ）")
     s.add_argument("--wait-gpu", type=int, default=30, help="空きが無いとき、空くまで待つ分数（0なら待たない）")
     e = sub.add_parser("exec")
     e.add_argument("--cpu", action="store_true", help="CPUのPodを扱う")

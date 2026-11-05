@@ -1,0 +1,16 @@
+name: check
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python の文法
+        run: git ls-files '*.py' | xargs -r python3 -m py_compile
+      - name: シェルの文法
+        run: git ls-files '*.sh' | xargs -r -n1 bash -n
+      - name: PC のパスの直書き（base-library の docs/common/paths.md 6章）
+        run: python3 .github/scripts/check_paths.py .
